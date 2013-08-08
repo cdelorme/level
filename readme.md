@@ -51,6 +51,6 @@ _Some ideas for this include keypoint detection and decision trees, but more res
 
 _Title inspired by To Aru Kagaku no Railgun's level6 project._
 
-This outline depicts ideas held before employment as a way to separate personal ideas prior to signing a contract which may lock future work under my employer.
-
 Myself, friends, and family all have issues with duplicate images, often not simply copies of the same data, but different modified versions of the same image.  Issues with cropped, rotated, discolored, or scaled instances of the same image change the hash significantly, making it impossible to deduplicate with a simple hash based system.  Ideally I wish to enhance the hash system with a secondary pass that performs advanced image detection for comparison of all the aforementioned issues.
+
+This project is to outline one of my many personal ideas before accepting employer contracts that may prevent me from being able to embark on my ideas as my own and not as employer property.
