@@ -1,5 +1,5 @@
 
-# level6 project
+# level6
 
 A FOSS file deduplication software for command line.
 
