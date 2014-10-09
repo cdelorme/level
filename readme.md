@@ -1,27 +1,32 @@
 
-# Linux File Deduplication
-## Project name: level6_project
+# level6 project
 
-### Project Description
+A FOSS file deduplication software for command line.
 
-The objective of this software is file deduplication to reduce consumed space and clean out a path.
+_Title inspired by To Aru Kagaku no Railgun and dark humor._
 
-This is not a novel concept, but a learning experience and plan for enhancements going forward.
+## sales pitch
 
+There are plenty of softwares that provide file deduplication, as well as modern file systems that have such features built-in.
 
-### Competing Software
+However, almost no decent file deduplication tools are both cross-platform and free.
 
-An existing tool might be hardlink, which scans for duplicates and links the nodes to the same contents, safely accomplishing the objective.  A dry-run can simply print out duplicates.
-
-
-### Project Details & Objectives
-
-Personal objective is to learn about C and pointers.
-
-Project objective is file deduplication command line tool with various advanced options, and potentially a Gtk3 addon.
+A similar cli tool might be `hardlink`.
 
 
-#### Details List
+## usage
+
+tbdt
+
+
+## building
+
+Simply run `go get` then `go install` to download any dependencies and then install the command to your golang bin local to your system.
+
+Alternatively on linux or mac systems you may use the `dev` script to set a project-local `GOPATH` and then run `go get` and `go build` to create the executable in the project folder and test without effecting your local `GOPATH` contents.
+
+
+## future plans
 
 1. Accept arguments:
 
@@ -47,10 +52,7 @@ Project objective is file deduplication command line tool with various advanced 
 _Some ideas for this include keypoint detection and decision trees, but more research needs to be done before this can be looked at further._
 
 
-### Notes
+# references
 
-_Title inspired by To Aru Kagaku no Railgun's level6 project._
+- []()
 
-Myself, friends, and family all have issues with duplicate images, often not simply copies of the same data, but different modified versions of the same image.  Issues with cropped, rotated, discolored, or scaled instances of the same image change the hash significantly, making it impossible to deduplicate with a simple hash based system.  Ideally I wish to enhance the hash system with a secondary pass that performs advanced image detection for comparison of all the aforementioned issues.
-
-This project is to outline one of my many personal ideas before accepting employer contracts that may prevent me from being able to embark on my ideas as my own and not as employer property.
