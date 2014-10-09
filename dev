@@ -1,0 +1,5 @@
+#!/bin/bash
+mkdir -p go
+export GOPATH=$(pwd)/go
+go get
+go build
