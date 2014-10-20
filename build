@@ -1,0 +1,4 @@
+#!/bin/bash
+GOPATH=$(pwd)/go
+go get &> /dev/null
+go build
