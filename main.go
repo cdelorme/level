@@ -12,7 +12,7 @@ import (
 )
 
 // file container
-type FileBlob struct {
+type File struct {
 	Path string
 	Hash string
 }
@@ -23,13 +23,13 @@ type Dedup struct {
 	Path   string
 	Delete bool
 	Move   string
-	Files  map[int64][]FileBlob
+	Files  map[int64][]File
 }
 
 func main() {
 
 	// prepare new dedup struct /w logger & empty file map
-	d := Dedup{Logger: log.Logger{Level: log.INFO}, Files: make(map[int64][]FileBlob)}
+	d := Dedup{Logger: log.Logger{Level: log.INFO}, Files: make(map[int64][]File)}
 
 	// get current directory
 	cwd, _ := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -74,9 +74,9 @@ func (dedup *Dedup) Walk(path string, file os.FileInfo, err error) error {
 	if !file.IsDir() {
 		size := file.Size()
 		if _, ok := dedup.Files[size]; !ok {
-			dedup.Files[size] = make([]FileBlob, 0)
+			dedup.Files[size] = make([]File, 0)
 		}
-		dedup.Files[size] = append(dedup.Files[size], FileBlob{Path: path})
+		dedup.Files[size] = append(dedup.Files[size], File{Path: path})
 	}
 	return err
 }
