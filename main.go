@@ -3,6 +3,7 @@ package main
 import (
 	// "fmt"
 	"os"
+	"path/filepath"
 	// "strings"
 
 	"github.com/cdelorme/go-log"
@@ -31,6 +32,9 @@ func main() {
 	// prepare new dedup struct /w logger
 	d := Dedup{Logger: log.Logger{Level: log.INFO}}
 
+	// get current directory
+	cwd, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+
 	// prepare cli options
 	appOptions := option.App{Description: "file deduplication program"}
 	appOptions.Flag("path", "path to begin scanning", "-p", "--path")
@@ -42,7 +46,7 @@ func main() {
 	o := appOptions.Parse()
 
 	// apply options to deduplication
-	d.Path, _ = maps.String(&o, "", "path")
+	d.Path, _ = maps.String(&o, cwd, "path")
 	d.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
 	d.Delete, _ = maps.Bool(&o, false, "delete")
 	d.Move, _ = maps.String(&o, "", "move")
@@ -50,21 +54,29 @@ func main() {
 		d.Logger.Level = log.DEBUG
 	}
 
+	// print state of dedup before we continue
 	d.Logger.Debug("Dedup State: %+v", d)
 
+	// test directory walk
+	if err := filepath.Walk(d.Path, d.Walk); err != nil {
+		d.Logger.Error("Failed to walk directory: %s", err)
+	}
+
+	// print list of files
+	d.Logger.Debug("Files: %+v", d.Files)
+
 	// steps to implement
-	// - recurse directory
-	// - build list of file paths
-	// - store sizes with file paths
 	// - sort files to group by size
 	// - concurrently run through each group
 	// - hash file contents and compare for each group
 
 }
 
-func (dedup *Dedup) Walk(path, f *os.FileInfo, err error) {
-
-	// walk a supplied path and build a single map of file paths plus sizes
+func (dedup *Dedup) Walk(path string, file os.FileInfo, err error) error {
+	if !file.IsDir() {
+		dedup.Files = append(dedup.Files, FileBlob{Path: path, Size: file.Size()})
+	}
+	return err
 }
 
 func (dedup *Dedup) Sort() {
