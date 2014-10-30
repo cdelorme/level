@@ -14,7 +14,6 @@ import (
 // file container
 type FileBlob struct {
 	Path string
-	Size int64
 	Hash string
 }
 
@@ -24,13 +23,13 @@ type Dedup struct {
 	Path   string
 	Delete bool
 	Move   string
-	Files  []FileBlob
+	Files  map[int64][]FileBlob
 }
 
 func main() {
 
-	// prepare new dedup struct /w logger
-	d := Dedup{Logger: log.Logger{Level: log.INFO}}
+	// prepare new dedup struct /w logger & empty file map
+	d := Dedup{Logger: log.Logger{Level: log.INFO}, Files: make(map[int64][]FileBlob)}
 
 	// get current directory
 	cwd, _ := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -62,11 +61,10 @@ func main() {
 		d.Logger.Error("Failed to walk directory: %s", err)
 	}
 
-	// print list of files
+	// print list of files grouped by size index
 	d.Logger.Debug("Files: %+v", d.Files)
 
 	// steps to implement
-	// - sort files to group by size
 	// - concurrently run through each group
 	// - hash file contents and compare for each group
 
@@ -74,7 +72,11 @@ func main() {
 
 func (dedup *Dedup) Walk(path string, file os.FileInfo, err error) error {
 	if !file.IsDir() {
-		dedup.Files = append(dedup.Files, FileBlob{Path: path, Size: file.Size()})
+		size := file.Size()
+		if _, ok := dedup.Files[size]; !ok {
+			dedup.Files[size] = make([]FileBlob, 0)
+		}
+		dedup.Files[size] = append(dedup.Files[size], FileBlob{Path: path})
 	}
 	return err
 }
