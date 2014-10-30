@@ -1,4 +1,5 @@
 #!/bin/bash
+#rm -rf go
 export GOPATH=$(pwd)/go
 go get &> /dev/null
 go build
