@@ -1,10 +1,10 @@
 package main
 
 import (
-	// "fmt"
 	"os"
 	"path/filepath"
-	// "strings"
+	"runtime"
+	"sync"
 
 	"github.com/cdelorme/go-log"
 	"github.com/cdelorme/go-maps"
@@ -19,17 +19,22 @@ type File struct {
 
 // deduplication container
 type Dedup struct {
-	Logger log.Logger
-	Path   string
-	Delete bool
-	Move   string
-	Files  map[int64][]File
+	MaxParallelism int
+	Logger         log.Logger
+	Path           string
+	Delete         bool
+	Move           string
+	Files          map[int64][]File
 }
 
 func main() {
 
 	// prepare new dedup struct /w logger & empty file map
 	d := Dedup{Logger: log.Logger{Level: log.INFO}, Files: make(map[int64][]File)}
+
+	// optimize concurrent processing
+	d.MaxParallelism = runtime.NumCPU()
+	runtime.GOMAXPROCS(d.MaxParallelism)
 
 	// get current directory
 	cwd, _ := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -41,7 +46,6 @@ func main() {
 	appOptions.Flag("move", "move files to supplied path", "-m", "--move")
 	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
 	appOptions.Flag("quiet", "silence output", "-q", "--quiet")
-	// add a concurrency flag?
 	o := appOptions.Parse()
 
 	// apply options to deduplication
@@ -64,6 +68,11 @@ func main() {
 	// print list of files grouped by size index
 	d.Logger.Debug("Files: %+v", d.Files)
 
+	// run comparison process
+	d.ComparisonProcess()
+
+	d.Logger.Critical("Testing %d and %d", 1, 4)
+
 	// steps to implement
 	// - concurrently run through each group
 	// - hash file contents and compare for each group
@@ -81,10 +90,33 @@ func (dedup *Dedup) Walk(path string, file os.FileInfo, err error) error {
 	return err
 }
 
-func (dedup *Dedup) Sort() {
-	// sort files by size & return a map of grouped maps
+func (dedup *Dedup) ComparisonProcess() {
+
+	// use a channel plus a waitgroup to manage processing in parallel
+	tasks := make(chan int64)
+	var wg sync.WaitGroup
+
+	// prepare queue of workers
+	for i := 0; i < dedup.MaxParallelism; i++ {
+		wg.Add(1)
+		go dedup.HashAndCompare(tasks, &wg, i)
+	}
+
+	// send a set of files to each goroutine
+	for size, _ := range dedup.Files {
+		tasks <- size
+	}
+
+	// close all channels, then wait for our waitgroup to finish
+	close(tasks)
+	wg.Wait()
 }
 
-func (dedup *Dedup) Process() {
-	// spinup a queue of go routines to process each group individually
+func (dedup *Dedup) HashAndCompare(sizes chan int64, wg *sync.WaitGroup, num int) {
+	defer wg.Done()
+
+	// iterate each supplied size
+	for size := range sizes {
+		dedup.Logger.Debug("Channel %d, size %d", num, size)
+	}
 }
