@@ -2,4 +2,5 @@
 #rm -rf go
 export GOPATH=$(pwd)/go
 go get &> /dev/null
+go get -u all &> /dev/null
 go build
