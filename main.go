@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	// "fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -20,6 +21,16 @@ type File struct {
 	Hash string
 }
 
+type Level6 struct {
+	MaxParallelism int
+	Logger         log.Logger
+	Path           string
+	Delete         bool
+	Move           string
+	Files          map[int64][]File
+	Duplicates     map[string][]File
+}
+
 // deduplication container
 type Dedup struct {
 	MaxParallelism int
@@ -33,19 +44,19 @@ type Dedup struct {
 
 func main() {
 
-	// prepare new dedup struct /w logger, and empty files/dedup maps
-	d := Dedup{
+	// prepare level6 /w logger and empty maps
+	level6 := Level6{
 		Logger:     log.Logger{Level: log.INFO},
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
 	}
 
 	// optimize concurrent processing
-	d.MaxParallelism = runtime.NumCPU()
-	runtime.GOMAXPROCS(d.MaxParallelism)
+	level6.MaxParallelism = runtime.NumCPU()
+	runtime.GOMAXPROCS(level6.MaxParallelism)
 
 	// get current directory
-	cwd, _ := filepath.Abs(filepath.Dir(os.Args[0]))
+	cwd, _ := os.Getwd()
 
 	// prepare cli options
 	appOptions := option.App{Description: "file deduplication program"}
@@ -53,118 +64,170 @@ func main() {
 	appOptions.Flag("delete", "delete duplicate files", "-d", "--delete")
 	appOptions.Flag("move", "move files to supplied path", "-m", "--move")
 	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
-	appOptions.Flag("quiet", "silence output", "-q", "--quiet")
+	appOptions.Flag("quiet", "silence all output", "-q", "--quiet")
 	o := appOptions.Parse()
 
-	// apply options to deduplication
-	d.Path, _ = maps.String(&o, cwd, "path")
-	d.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
-	d.Delete, _ = maps.Bool(&o, false, "delete")
-	d.Move, _ = maps.String(&o, "", "move")
+	// apply flags
+	level6.Path, _ = maps.String(&o, cwd, "path")
+	level6.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
+	level6.Delete, _ = maps.Bool(&o, false, "delete")
+	level6.Move, _ = maps.String(&o, "", "move")
 	if ok, _ := maps.Bool(&o, false, "verbose"); ok {
-		d.Logger.Level = log.DEBUG
+		level6.Logger.Level = log.DEBUG
 	}
 
-	// print state of dedup before we continue
-	d.Logger.Debug("initial application state: %+v", d)
-
-	// test directory walk
-	if err := filepath.Walk(d.Path, d.Walk); err != nil {
-		d.Logger.Error("failed to walk directory: %s", err)
+	// if quiet is set but not delete or move, exit
+	if level6.Logger.Silent && !level6.Delete && level6.Move == "" {
+		level6.Logger.Error("quiet is set but not delete or move, exiting...")
+		return
 	}
 
-	// print list of files grouped by size index
-	d.Logger.Debug("files: %+v", d.Files)
+	// print initial level6 state
+	level6.Logger.Debug("initial application state: %+v", level6)
 
-	// run comparison process
-	d.ComparisonProcess()
+	// build list of files grouped by size
+	if err := filepath.Walk(level6.Path, level6.Walk); err != nil {
+		level6.Logger.Error("failed to walk directory: %s", err)
+	}
+	level6.Logger.Debug("files: %+v", level6.Files)
 
-	// print duplicates
-	d.Logger.Debug("duplicates: %+v", d.Duplicates)
-	d.Logger.Debug("files: %+v", d.Files)
+	level6.GenerateHashesAsync()
+	level6.Logger.Debug("files /w hashes: %+v", level6.Files)
+
+	// async compare
+	level6.CompareHashesAsync()
+	// level6.Logger.Debug("Duplicates: %+v", level6.Duplicates)
+
+	// @todo algorithms for image, video, and audio comparison
+
+	// for _, dups := range level6.Duplicates {
+	// 	// @todo probably more efficient to get the index and range direct, since dups is a copy?
+	// 	for _, file := range dups {
+	// 		if !level6.Logger.Silent {
+	// 			// print duplicates
+	// 		}
+	// 		if level6.Move != "" {
+	// 			// move files to hashed folders
+	// 			// logic to rename on conflicts?
+	// 		} else if level6.Delete {
+	// 			// delete files
+	// 		}
+	// 	}
+	// }
 
 	// @todo
-	// - fix broken hash assignment (not being attached to files)
-	// - for optimal safety, run sort-by-hash logic after hash generation & move hash comparison to a second set of concurrent tasks
-	// - fix and optimize broken deduplication comparison loops
-	// - add methods to handle delete || move logic
-	//     - if delete is set, move is ignored
-	//     - move will generate folders with hash names and move files over, and must handle name conflicts (or simply number the files)
-	//     - delete will remove all but the (first || last) indexed item
+	// - fix hash generation logic to apply to references not copies
+	// - finish has comparison and optimize implementation
+	// - finish testing printing duplicates /w live data
+	// - test moving and deleting
 }
 
-func (dedup *Dedup) Walk(path string, file os.FileInfo, err error) error {
+func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 	if !file.IsDir() {
 		size := file.Size()
-		if _, ok := dedup.Files[size]; !ok {
-			dedup.Files[size] = make([]File, 0)
+		if _, ok := level6.Files[size]; !ok {
+			level6.Files[size] = make([]File, 0)
 		}
-		dedup.Files[size] = append(dedup.Files[size], File{Path: path})
+		level6.Files[size] = append(level6.Files[size], File{Path: path})
 	}
 	return err
 }
 
-func (dedup *Dedup) ComparisonProcess() {
+func (level6 *Level6) GenerateHashesAsync() {
 
-	// use a channel plus a waitgroup to manage processing in parallel
+	// prepare tasks channel and a waitgroup to process in-parallel
 	tasks := make(chan int64)
 	var wg sync.WaitGroup
 
-	// prepare queue of workers
-	for i := 0; i < dedup.MaxParallelism; i++ {
+	// prepare go routines and add to wait group
+	for i := 0; i < level6.MaxParallelism; i++ {
 		wg.Add(1)
-		go dedup.HashAndCompare(tasks, &wg, i)
+		go level6.GenerateHashes(tasks, &wg, i)
 	}
 
-	// send a set of files to each goroutine
-	for size, _ := range dedup.Files {
-		tasks <- size
+	// send sets of files to each go routine
+	for size, _ := range level6.Files {
+		if len(level6.Files[size]) > 1 {
+			tasks <- size
+		}
 	}
 
-	// close all channels, then wait for our waitgroup to finish
+	// close channels and wait for done() calls before moving forward
 	close(tasks)
 	wg.Wait()
 }
 
-func (dedup *Dedup) HashAndCompare(sizes chan int64, wg *sync.WaitGroup, num int) {
+func (level6 *Level6) GenerateHashes(sizes chan int64, wg *sync.WaitGroup, num int) {
 	defer wg.Done()
 
-	// if we can share a single Hash class (one per channel) then we could improve this process
+	// @todo test single hash instance
+	hash := sha256.New()
 
 	// iterate each supplied size
 	for size := range sizes {
-		dedup.Logger.Debug("channel %d, size %d", num, size)
-
-		for _, file := range dedup.Files[size] {
-			content, err := ioutil.ReadFile(file.Path)
+		level6.Logger.Debug("channel %d, for file size %d", num, size)
+		for i, _ := range level6.Files[size] {
+			content, err := ioutil.ReadFile(level6.Files[size][i].Path)
 			if err != nil {
-				dedup.Logger.Error("failed to parse file %s, %s", file.Path, err)
+				level6.Logger.Error("failed to parse file %s, %s", level6.Files[size][i].Path, err)
 				continue
 			}
 
-			// create the hash
-			hash := sha256.New()
+			// generate hash, add to instance, and reset hash
 			hash.Write(content)
-			file.Hash = hex.EncodeToString(hash.Sum(nil))
-			dedup.Logger.Debug("file %s hash %s", file.Path, file.Hash)
+			level6.Files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
+			hash.Reset()
 		}
+	}
+}
 
-		// run hash comparison to build a list of duplicates
-		// for _, f := range dedup.Files[size] {
-		// 	b := false
-		// 	for _, d := range dedup.Files[size] {
-		// 		if f != d && f.Hash == d.Hash {
-		// 			if _, ok := dedup.Duplicates[f.Hash]; !ok {
-		// 				dedup.Duplicates[f.Hash] = make([]File, 0)
-		// 			}
-		// 			dedup.Duplicates[f.Hash] = append(dedup.Duplicates[f.Hash], d)
-		// 			b = true
-		// 		}
-		// 		if b {
-		// 			dedup.Duplicates[f.Hash] = append(dedup.Duplicates[f.Hash], f)
-		// 		}
-		// 	}
-		// }
+func (level6 *Level6) CompareHashesAsync() {
 
+	// prepare tasks channel and a waitgroup to process in-parallel
+	tasks := make(chan int64)
+	var wg sync.WaitGroup
+
+	// prepare go routines and add to wait group
+	for i := 0; i < level6.MaxParallelism; i++ {
+		wg.Add(1)
+		go level6.CompareHashes(tasks, &wg, i)
+	}
+
+	// send sets of files to go routine, with a two-way channel
+	// we can capture returns and safely append to level6.Duplicates
+	// for size, _ := range level6.Files {
+	// if len(level6.Files[size]) > 1 {
+	//   		// edit for two-way channel to receive duplicates
+	//   		tasks <- size
+	// }
+	// }
+
+	// close channels and wait for done() calls before moving forward
+	close(tasks)
+	wg.Wait()
+}
+
+func (level6 *Level6) CompareHashes(sizes chan int64, wg *sync.WaitGroup, num int) {
+	defer wg.Done()
+
+	for size := range sizes {
+		// compare hashes
+		for i, _ := range level6.Files[size] {
+			// duplicates := make([]File, 0)
+			level6.Logger.Debug("I: %d", i)
+			// b := false
+			// for _, d := range level6.Files[size] {
+			// 	if f != d && f.Hash == d.Hash {
+			// 		if _, ok := level6.Duplicates[f.Hash]; !ok {
+			// 			level6.Duplicates[f.Hash] = make([]File, 0)
+			// 		}
+			// 		level6.Duplicates[f.Hash] = append(dedup.Duplicates[f.Hash], d)
+			// 		b = true
+			// 	}
+			// 	if b {
+			// 		level6.Duplicates[f.Hash] = append(dedup.Duplicates[f.Hash], f)
+			// 	}
+			// }
+		}
 	}
 }
