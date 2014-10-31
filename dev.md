@@ -62,8 +62,6 @@ I am not yet sure how well the application will work when run against a massive 
 
 ## tasks
 
-- rename Dedup struct to Level6, and fix all references
-- separately process file hashing and comparison
 - build more efficient comparison
 - add additional comparisons for image manipulation
 - lazify implementation to check len of array of `File` objects before looping
