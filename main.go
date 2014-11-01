@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 
 	"github.com/cdelorme/go-log"
 	"github.com/cdelorme/go-maps"
@@ -76,13 +77,22 @@ func main() {
 		}
 	}
 
+	// handle move or delete logic
 	if level6.Move != "" {
-		// mkdir by hash & move files
-		// handle name conflicts intelligently (prepend numbers pre-emptively)
-		fmt.Println("Moving")
-	}
-
-	if level6.Delete {
+		err := os.Mkdir(level6.Move, 0740)
+		if err != nil {
+			level6.Logger.Error("Failed to make dir files, %s", err)
+		}
+		for hash, _ := range level6.Duplicates {
+			for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+				mv := filepath.Join(level6.Move, strconv.Itoa(i+1)+"-"+filepath.Base(level6.Duplicates[hash][i].Path))
+				err := os.Rename(level6.Duplicates[hash][i].Path, mv)
+				if err != nil {
+					level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
+				}
+			}
+		}
+	} else if level6.Delete {
 		for hash, _ := range level6.Duplicates {
 			for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
 				err := os.Remove(level6.Duplicates[hash][i].Path)
@@ -94,5 +104,5 @@ func main() {
 	}
 
 	// @todo
-	// - write move logic, and test on decent sized data sets (30~GB)
+	// - test move & delete on large sets of data
 }
