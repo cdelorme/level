@@ -3,7 +3,8 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	// "fmt"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -18,7 +19,7 @@ import (
 // file container
 type File struct {
 	Path string
-	Hash string
+	Hash string `json:"-"`
 }
 
 type Level6 struct {
@@ -98,26 +99,26 @@ func main() {
 	level6.CompareHashesAsync()
 	level6.Logger.Debug("duplicates: %+v", level6.Duplicates)
 
-	// @todo algorithms for image, video, and audio comparison
+	// print out contents as pretty json (readable, and programmatically parsable)
+	if !level6.Logger.Silent {
+		out, err := json.MarshalIndent(level6.Duplicates, "", "    ")
+		if err == nil {
+			fmt.Printf(string(out))
+		}
+	}
 
-	// for _, dups := range level6.Duplicates {
-	// 	// @todo probably more efficient to get the index and range direct, since dups is a copy?
-	// 	for _, file := range dups {
-	// 		if !level6.Logger.Silent {
-	// 			// print duplicates
-	// 		}
-	// 		if level6.Move != "" {
-	// 			// move files to hashed folders
-	// 			// logic to rename on conflicts?
-	// 		} else if level6.Delete {
-	// 			// delete files
-	// 		}
-	// 	}
-	// }
+	if level6.Move != "" {
+		// mkdir by hash & move files
+		// handle name conflicts intelligently (prepend numbers pre-emptively)
+	}
+
+	if level6.Delete {
+		// delete
+	}
 
 	// @todo
-	// - finish testing printing duplicates /w live data
-	// - test moving and deleting
+	// - move goroutine functions inline to async methods, and rename async to general-name
+	// - test moving & deletion on large data sets (30~GB)
 }
 
 func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
@@ -197,10 +198,12 @@ func (level6 *Level6) CompareHashesAsync() {
 		for {
 			data := <-duplicates
 			for hash, files := range data {
-				if _, ok := level6.Duplicates[hash]; !ok {
-					level6.Duplicates[hash] = make([]File, 0)
+				if len(files) > 0 {
+					if _, ok := level6.Duplicates[hash]; !ok {
+						level6.Duplicates[hash] = make([]File, 0)
+					}
+					level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
 				}
-				level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
 			}
 		}
 	}()
