@@ -32,7 +32,7 @@ Reasons to use it:
 
 - it doesn't contain mounds of unit tests
 - it doesn't carry heavy abstraction layers or complexity
-- it's less than 500 lines of code
+- it's less than 300 lines of code
 
 
 ## application behavior
