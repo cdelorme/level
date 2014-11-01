@@ -56,6 +56,8 @@ When `move` is selected, it will only move all but the first into the `move` pat
 
 When `delete` is selected, it will remove all but the first identified instance.
 
+The default output format is json, which allows the content to be consumed by other utilities.
+
 
 ### usage
 
