@@ -96,7 +96,7 @@ func main() {
 
 	// async compare
 	level6.CompareHashesAsync()
-	// level6.Logger.Debug("Duplicates: %+v", level6.Duplicates)
+	level6.Logger.Debug("duplicates: %+v", level6.Duplicates)
 
 	// @todo algorithms for image, video, and audio comparison
 
@@ -116,14 +116,12 @@ func main() {
 	// }
 
 	// @todo
-	// - fix hash generation logic to apply to references not copies
-	// - finish has comparison and optimize implementation
 	// - finish testing printing duplicates /w live data
 	// - test moving and deleting
 }
 
 func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
-	if !file.IsDir() {
+	if file.Mode().IsRegular() {
 		size := file.Size()
 		if _, ok := level6.Files[size]; !ok {
 			level6.Files[size] = make([]File, 0)
@@ -135,7 +133,7 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 
 func (level6 *Level6) GenerateHashesAsync() {
 
-	// prepare tasks channel and a waitgroup to process in-parallel
+	// prepare tasks channel and wait group for concurrent processing
 	tasks := make(chan int64)
 	var wg sync.WaitGroup
 
@@ -183,51 +181,62 @@ func (level6 *Level6) GenerateHashes(sizes chan int64, wg *sync.WaitGroup, num i
 
 func (level6 *Level6) CompareHashesAsync() {
 
-	// prepare tasks channel and a waitgroup to process in-parallel
+	// prepare tasks and duplicates with a wait group
 	tasks := make(chan int64)
+	duplicates := make(chan map[string][]File)
 	var wg sync.WaitGroup
 
 	// prepare go routines and add to wait group
 	for i := 0; i < level6.MaxParallelism; i++ {
 		wg.Add(1)
-		go level6.CompareHashes(tasks, &wg, i)
+		go level6.CompareHashes(tasks, duplicates, &wg, i)
 	}
 
-	// send sets of files to go routine, with a two-way channel
-	// we can capture returns and safely append to level6.Duplicates
-	// for size, _ := range level6.Files {
-	// if len(level6.Files[size]) > 1 {
-	//   		// edit for two-way channel to receive duplicates
-	//   		tasks <- size
-	// }
-	// }
+	// asynchronously capture duplicates but synchronously & safely append to level6.Duplicates
+	go func() {
+		for {
+			data := <-duplicates
+			for hash, files := range data {
+				if _, ok := level6.Duplicates[hash]; !ok {
+					level6.Duplicates[hash] = make([]File, 0)
+				}
+				level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
+			}
+		}
+	}()
 
-	// close channels and wait for done() calls before moving forward
+	// send sizes to our channel and let our goroutines pick up the work
+	for size, _ := range level6.Files {
+		if len(level6.Files[size]) > 1 {
+			tasks <- size
+		}
+	}
+
+	// when all of our tasks are done, we can wait for completion then close our output
 	close(tasks)
 	wg.Wait()
+	close(duplicates)
 }
 
-func (level6 *Level6) CompareHashes(sizes chan int64, wg *sync.WaitGroup, num int) {
+func (level6 *Level6) CompareHashes(sizes chan int64, duplicates chan map[string][]File, wg *sync.WaitGroup, num int) {
 	defer wg.Done()
-
 	for size := range sizes {
-		// compare hashes
+		dups := make(map[string][]File)
 		for i, _ := range level6.Files[size] {
-			// duplicates := make([]File, 0)
-			level6.Logger.Debug("I: %d", i)
-			// b := false
-			// for _, d := range level6.Files[size] {
-			// 	if f != d && f.Hash == d.Hash {
-			// 		if _, ok := level6.Duplicates[f.Hash]; !ok {
-			// 			level6.Duplicates[f.Hash] = make([]File, 0)
-			// 		}
-			// 		level6.Duplicates[f.Hash] = append(dedup.Duplicates[f.Hash], d)
-			// 		b = true
-			// 	}
-			// 	if b {
-			// 		level6.Duplicates[f.Hash] = append(dedup.Duplicates[f.Hash], f)
-			// 	}
-			// }
+			if _, ok := dups[level6.Files[size][i].Hash]; !ok {
+				dups[level6.Files[size][i].Hash] = make([]File, 0)
+				for d := i + 1; d < len(level6.Files[size]); d++ {
+					if level6.Files[size][i].Hash == level6.Files[size][d].Hash {
+						dups[level6.Files[size][i].Hash] = append(dups[level6.Files[size][i].Hash], level6.Files[size][d])
+					}
+				}
+				if len(dups[level6.Files[size][i].Hash]) > 0 {
+					dups[level6.Files[size][i].Hash] = append(dups[level6.Files[size][i].Hash], level6.Files[size][i])
+				}
+			}
+		}
+		if len(dups) > 0 {
+			duplicates <- dups
 		}
 	}
 }
