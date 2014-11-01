@@ -43,7 +43,7 @@ func (level6 *Level6) GenerateHashes() {
 		go func() {
 			defer wg.Done()
 
-			// @todo test single hash instance
+			// use a single shared hash
 			hash := sha256.New()
 
 			// iterate each supplied size
