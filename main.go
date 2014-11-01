@@ -72,19 +72,27 @@ func main() {
 	if !level6.Logger.Silent {
 		out, err := json.MarshalIndent(level6.Duplicates, "", "    ")
 		if err == nil {
-			fmt.Printf(string(out))
+			fmt.Println(string(out))
 		}
 	}
 
 	if level6.Move != "" {
 		// mkdir by hash & move files
 		// handle name conflicts intelligently (prepend numbers pre-emptively)
+		fmt.Println("Moving")
 	}
 
 	if level6.Delete {
-		// delete
+		for hash, _ := range level6.Duplicates {
+			for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+				err := os.Remove(level6.Duplicates[hash][i].Path)
+				if err != nil {
+					level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
+				}
+			}
+		}
 	}
 
 	// @todo
-	// - write move & delete logic, and test on decent sized data sets (30~GB)
+	// - write move logic, and test on decent sized data sets (30~GB)
 }
