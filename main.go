@@ -105,10 +105,4 @@ func main() {
 			}
 		}
 	}
-
-	// @todo
-	// - mkdir for hash folders for duplicates during mv
-	//
-	// - test move & delete on large sets of data
-	// - test build & execution on Windows
 }
