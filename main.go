@@ -85,9 +85,12 @@ func main() {
 		}
 		for hash, _ := range level6.Duplicates {
 			for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-				mv := filepath.Join(level6.Move, strconv.Itoa(i+1)+"-"+filepath.Base(level6.Duplicates[hash][i].Path))
-				err := os.Rename(level6.Duplicates[hash][i].Path, mv)
-				if err != nil {
+				d := filepath.Join(level6.Move, hash)
+				if err := os.Mkdir(d, 0740); err != nil {
+					level6.Logger.Error("failed to create containing folder %s", d)
+				}
+				mv := filepath.Join(d, strconv.Itoa(i+1)+"-"+filepath.Base(level6.Duplicates[hash][i].Path))
+				if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
 					level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
 				}
 			}
@@ -104,5 +107,8 @@ func main() {
 	}
 
 	// @todo
+	// - mkdir for hash folders for duplicates during mv
+	//
 	// - test move & delete on large sets of data
+	// - test build & execution on Windows
 }
