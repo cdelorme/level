@@ -26,7 +26,7 @@ type Level6 struct {
 }
 
 func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
-	if file.Mode().IsRegular() {
+	if file != nil && file.Mode().IsRegular() {
 		f := File{Size: file.Size(), Path: path}
 		if _, ok := level6.Files[f.Size]; !ok {
 			level6.Files[f.Size] = make([]File, 0)
