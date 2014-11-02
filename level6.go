@@ -3,8 +3,12 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strconv"
 	"sync"
 
 	"github.com/cdelorme/go-log"
@@ -15,6 +19,7 @@ type Level6 struct {
 	Logger         log.Logger
 	Path           string
 	Delete         bool
+	Json           bool
 	Move           string
 	Files          map[int64][]File
 	Duplicates     map[string][]File
@@ -22,11 +27,11 @@ type Level6 struct {
 
 func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 	if file.Mode().IsRegular() {
-		size := file.Size()
-		if _, ok := level6.Files[size]; !ok {
-			level6.Files[size] = make([]File, 0)
+		f := File{Size: file.Size(), Path: path}
+		if _, ok := level6.Files[f.Size]; !ok {
+			level6.Files[f.Size] = make([]File, 0)
 		}
-		level6.Files[size] = append(level6.Files[size], File{Path: path})
+		level6.Files[f.Size] = append(level6.Files[f.Size], f)
 	}
 	return err
 }
@@ -138,4 +143,58 @@ func (level6 *Level6) CompareHashes() {
 	close(sizes)
 	wg.Wait()
 	close(duplicates)
+}
+
+func (level6 *Level6) Print() {
+	if !level6.Logger.Silent {
+		if level6.Json {
+			out, err := json.MarshalIndent(level6.Duplicates, "", "    ")
+			if err == nil {
+				fmt.Println(string(out))
+			}
+		} else {
+			for hash, _ := range level6.Duplicates {
+				for i, _ := range level6.Duplicates[hash] {
+					fmt.Printf("%s %d %s\n", level6.Duplicates[hash][i].Hash, level6.Duplicates[hash][i].Size, level6.Duplicates[hash][i].Path)
+				}
+			}
+		}
+	}
+
+	// move or modify
+	if level6.Move != "" {
+		level6.MoveDuplicates()
+	} else if level6.Delete {
+		level6.DeleteDuplicates()
+	}
+}
+
+func (level6 *Level6) MoveDuplicates() {
+	err := os.Mkdir(level6.Move, 0740)
+	if err != nil {
+		level6.Logger.Error("Failed to make dir files, %s", err)
+	}
+	for hash, _ := range level6.Duplicates {
+		for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+			d := filepath.Join(level6.Move, hash)
+			if err := os.Mkdir(d, 0740); err != nil {
+				level6.Logger.Error("failed to create containing folder %s", d)
+			}
+			mv := filepath.Join(d, strconv.Itoa(i+1)+"-"+filepath.Base(level6.Duplicates[hash][i].Path))
+			if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
+				level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
+			}
+		}
+	}
+}
+
+func (level6 *Level6) DeleteDuplicates() {
+	for hash, _ := range level6.Duplicates {
+		for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+			err := os.Remove(level6.Duplicates[hash][i].Path)
+			if err != nil {
+				level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
+			}
+		}
+	}
 }

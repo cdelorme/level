@@ -43,8 +43,9 @@ Switches:
 - `move` overrides `delete`
 - `quiet` expects `delete` or `move`
 - `path` is optional
+- `json` to print pretty or for sharing with another application
 
-The applications default behavior is to simply print out the duplicates to stdout.
+The applications default behavior is to simply print out the duplicates to stdout.  Supplying the `json` flag will print the results as a json array.
 
 It will exit if `quiet` is set, but neither `delete` nor `move` are assigned.
 
@@ -55,8 +56,6 @@ It moves files after scanning and building hashes, which means your `move` folde
 When `move` is selected, it will only move all but the first into the `move` path.
 
 When `delete` is selected, it will remove all but the first identified instance.
-
-The default output format is json, which allows the content to be consumed by other utilities.
 
 
 ### usage
@@ -83,6 +82,13 @@ For additional options:
 You can install with `go get github.com/cdelorme/level6`.
 
 If you want to test it you can clone the repository and run `go get` and `go build`.  For convenience on osx or linux the `build` bash script will create a local gopath to test build in-place without affecting anything else on your system.
+
+
+## hash comparison
+
+This project uses sha256 hashing to ensure unique file data.  It also only compares two files with equal sizes.
+
+[![sha256 is preferred](http://i.stack.imgur.com/46Vwb.jpg)](http://crypto.stackexchange.com/questions/1170/best-way-to-reduce-chance-of-hash-collisions-multiple-hashes-or-larger-hash)
 
 
 ## future plans

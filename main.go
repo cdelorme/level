@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
 
 	"github.com/cdelorme/go-log"
 	"github.com/cdelorme/go-maps"
@@ -17,7 +14,7 @@ func main() {
 
 	// prepare level6 /w logger and empty maps
 	level6 := Level6{
-		Logger:     log.Logger{Level: log.INFO},
+		Logger:     log.Logger{Level: log.ERROR},
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
 	}
@@ -36,13 +33,18 @@ func main() {
 	appOptions.Flag("move", "move files to supplied path", "-m", "--move")
 	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
 	appOptions.Flag("quiet", "silence all output", "-q", "--quiet")
+	appOptions.Flag("json", "output in json", "-j", "--json")
+	appOptions.Example("level6 -p ~/")
+	appOptions.Example("level6 -d -p ~/")
+	appOptions.Example("level6 -m ~/dups -p ~/")
 	o := appOptions.Parse()
 
 	// apply flags
 	level6.Path, _ = maps.String(&o, cwd, "path")
-	level6.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
-	level6.Delete, _ = maps.Bool(&o, false, "delete")
 	level6.Move, _ = maps.String(&o, "", "move")
+	level6.Json, _ = maps.Bool(&o, false, "json")
+	level6.Delete, _ = maps.Bool(&o, false, "delete")
+	level6.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
 	if ok, _ := maps.Bool(&o, false, "verbose"); ok {
 		level6.Logger.Level = log.DEBUG
 	}
@@ -69,40 +71,6 @@ func main() {
 	level6.CompareHashes()
 	level6.Logger.Debug("duplicates: %+v", level6.Duplicates)
 
-	// print out contents as pretty json (readable, and programmatically parsable)
-	if !level6.Logger.Silent {
-		out, err := json.MarshalIndent(level6.Duplicates, "", "    ")
-		if err == nil {
-			fmt.Println(string(out))
-		}
-	}
-
-	// handle move or delete logic
-	if level6.Move != "" {
-		err := os.Mkdir(level6.Move, 0740)
-		if err != nil {
-			level6.Logger.Error("Failed to make dir files, %s", err)
-		}
-		for hash, _ := range level6.Duplicates {
-			for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-				d := filepath.Join(level6.Move, hash)
-				if err := os.Mkdir(d, 0740); err != nil {
-					level6.Logger.Error("failed to create containing folder %s", d)
-				}
-				mv := filepath.Join(d, strconv.Itoa(i+1)+"-"+filepath.Base(level6.Duplicates[hash][i].Path))
-				if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
-					level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
-				}
-			}
-		}
-	} else if level6.Delete {
-		for hash, _ := range level6.Duplicates {
-			for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-				err := os.Remove(level6.Duplicates[hash][i].Path)
-				if err != nil {
-					level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
-				}
-			}
-		}
-	}
+	// print out results
+	level6.Print()
 }
