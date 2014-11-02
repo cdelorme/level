@@ -34,6 +34,8 @@ Reasons to use it:
 - it doesn't carry heavy abstraction layers or complexity
 - it's less than 300 lines of code
 
+_While I would like to provide cross-platform compatibility, currently there are some issues getting the code to work in Windows, specifically the memory management and `FileInfo` seem to have bugs either in the windows go implementation or a possible memory leak._
+
 
 ## application behavior
 
