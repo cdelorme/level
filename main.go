@@ -71,6 +71,8 @@ func main() {
 	level6.CompareHashes()
 	level6.Logger.Debug("duplicates: %+v", level6.Duplicates)
 
+	// @todo implement image, video, and audio comparison algorithms
+
 	// print out results
 	level6.Print()
 }
