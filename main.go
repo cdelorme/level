@@ -14,7 +14,7 @@ func main() {
 
 	// prepare level6 /w logger and empty maps
 	level6 := Level6{
-		Logger:     log.Logger{Level: log.ERROR},
+		Logger:     log.Logger{Level: log.Error},
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
 	}
@@ -46,7 +46,7 @@ func main() {
 	level6.Delete, _ = maps.Bool(&o, false, "delete")
 	level6.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
 	if ok, _ := maps.Bool(&o, false, "verbose"); ok {
-		level6.Logger.Level = log.DEBUG
+		level6.Logger.Level = log.Debug
 	}
 
 	// if quiet is set but not delete or move, exit
