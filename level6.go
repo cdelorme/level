@@ -86,7 +86,7 @@ func (level6 *Level6) CompareHashes() {
 
 	// prepare tasks and duplicates with a wait group
 	sizes := make(chan int64, level6.MaxParallelism + 2)
-	duplicates := make(chan map[string][]File, level6.MaxParallelism)
+	duplicates := make(chan map[string][]File)
 	var wg sync.WaitGroup
 
 	// prepare go routines and add to wait group
