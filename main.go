@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 
 	"github.com/cdelorme/go-log"
 	"github.com/cdelorme/go-maps"
@@ -31,28 +32,36 @@ func main() {
 	appOptions.Flag("path", "path to begin scanning", "-p", "--path")
 	appOptions.Flag("delete", "delete duplicate files", "-d", "--delete")
 	appOptions.Flag("move", "move files to supplied path", "-m", "--move")
-	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
 	appOptions.Flag("quiet", "silence all output", "-q", "--quiet")
 	appOptions.Flag("json", "output in json", "-j", "--json")
+	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
+	appOptions.Flag("profile", "create cpu profile", "-p", "--profile")
 	appOptions.Example("level6 -p ~/")
 	appOptions.Example("level6 -d -p ~/")
 	appOptions.Example("level6 -m ~/dups -p ~/")
-	o := appOptions.Parse()
+	flags := appOptions.Parse()
 
 	// apply flags
-	level6.Path, _ = maps.String(&o, cwd, "path")
-	level6.Move, _ = maps.String(&o, "", "move")
-	level6.Json, _ = maps.Bool(&o, false, "json")
-	level6.Delete, _ = maps.Bool(&o, false, "delete")
-	level6.Logger.Silent, _ = maps.Bool(&o, false, "quiet")
-	if ok, _ := maps.Bool(&o, false, "verbose"); ok {
+	level6.Path, _ = maps.String(&flags, cwd, "path")
+	level6.Move, _ = maps.String(&flags, level6.Move, "move")
+	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
+	level6.Delete, _ = maps.Bool(&flags, level6.Delete, "delete")
+	level6.Logger.Silent, _ = maps.Bool(&flags, level6.Logger.Silent, "quiet")
+	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
 		level6.Logger.Level = log.Debug
 	}
 
-	// if quiet is set but not delete or move, exit
+	// if quiet is set but not delete or move then exit
 	if level6.Logger.Silent && !level6.Delete && level6.Move == "" {
 		level6.Logger.Error("quiet is set but not delete or move, exiting...")
 		return
+	}
+
+	// profiling
+	if profile, _ := maps.String(&flags, "", "profile"); profile != "" {
+		f, _ := os.Create(profile)
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
 	}
 
 	// print initial level6 state
