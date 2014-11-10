@@ -41,11 +41,15 @@ _While I would like to provide cross-platform compatibility, currently there are
 
 Switches:
 
-- `quiet` overrides `verbose`
+- `path` is optional (uses pwd|cwd otherwise)
+- `delete`
 - `move` overrides `delete`
-- `quiet` expects `delete` or `move`
-- `path` is optional
+- `quiet` overrides `verbose` and expects `delete` or `move`
+- `max-size` of files to hash in kilobytes
 - `json` to print pretty or for sharing with another application
+- `summary` to print summary data at end of execution
+- `verbose` debug output
+- `profile` produce a cpu profile file for `go test pprof`
 
 The applications default behavior is to simply print out the duplicates to stdout.  Supplying the `json` flag will print the results as a json array.
 
@@ -58,6 +62,10 @@ It moves files after scanning and building hashes, which means your `move` folde
 When `move` is selected, it will only move all but the first into the `move` path.
 
 When `delete` is selected, it will remove all but the first identified instance.
+
+To reduce load on the system you can specify a maximum size to build hashes, anything above that size will be ignored when hashing and comparing.
+
+The `summary` option ignores `quiet`, and will print to json when `json` is set.
 
 
 ### usage
