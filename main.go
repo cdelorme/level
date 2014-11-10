@@ -49,8 +49,8 @@ func main() {
 	level6.Path, _ = maps.String(&flags, cwd, "path")
 	level6.Delete, _ = maps.Bool(&flags, level6.Delete, "delete")
 	level6.Move, _ = maps.String(&flags, level6.Move, "move")
-	if max, _ := maps.Int(&flags, level6.MaxSize, "max"); max > 0 {
-		level6.MaxSize = max
+	if max, _ := maps.Float(&flags, level6.MaxSize, "max"); max > 0 {
+		level6.MaxSize = max * 1024
 	}
 	level6.Logger.Silent, _ = maps.Bool(&flags, level6.Logger.Silent, "quiet")
 	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
