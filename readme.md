@@ -67,6 +67,8 @@ To reduce load on the system you can specify a maximum size to build hashes, any
 
 The `summary` option ignores `quiet`, and will print to json when `json` is set.
 
+_Dot files are still included in the file total in the summary, but are not added to the files list nor is a hash generated or duplication processed on them._
+
 
 ### usage
 
