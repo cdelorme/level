@@ -12,6 +12,18 @@ import (
 	"github.com/cdelorme/go-option"
 )
 
+// check that a path exists (not whether it is a directory, nor whether it has rw for the current user)
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 func main() {
 
 	// prepare level6 /w logger and empty maps
