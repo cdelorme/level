@@ -47,15 +47,19 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 
 func (level6 *Level6) GenerateHashes() {
 
-	// prepare tasks channel and wait group for concurrent processing
-	sizes := make(chan int64, level6.MaxParallelism+2)
-	var wg sync.WaitGroup
+	// prepare channel and wait group for asynchronous hashing
+	sizes := make(chan int64, level6.MaxParallelism*2)
+	var hashing sync.WaitGroup
+
+	// prepare async bean counter
+	hashes := make(chan int64, level6.MaxParallelism*2)
+	var hashCount sync.WaitGroup
 
 	// prepare go routines and add to wait group
+	hashing.Add(level6.MaxParallelism)
 	for i := 0; i < level6.MaxParallelism; i++ {
-		wg.Add(1)
 		go func() {
-			defer wg.Done()
+			defer hashing.Done()
 
 			// use a single shared hash
 			hash := sha256.New()
@@ -74,10 +78,22 @@ func (level6 *Level6) GenerateHashes() {
 					hash.Write(content)
 					level6.Files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
 					hash.Reset()
+
+					// append to async hash counter
+					hashes <- 1
 				}
 			}
 		}()
 	}
+
+	// count in parallel
+	hashCount.Add(1)
+	go func() {
+		defer hashCount.Done()
+		for _ = range hashes {
+			level6.Summary.Hashes = level6.Summary.Hashes + 1
+		}
+	}()
 
 	// send sets of files to each go routine
 	for size, _ := range level6.Files {
@@ -88,22 +104,26 @@ func (level6 *Level6) GenerateHashes() {
 
 	// close channels and wait for done() calls before moving forward
 	close(sizes)
-	wg.Wait()
+	hashing.Wait()
+	close(hashes)
+	hashCount.Wait()
 }
 
 func (level6 *Level6) CompareHashes() {
 
 	// prepare tasks and duplicates with a wait group
-	sizes := make(chan int64, level6.MaxParallelism+2)
-	duplicates := make(chan map[string][]File)
-	var wg sync.WaitGroup
+	sizes := make(chan int64, level6.MaxParallelism*2)
+	var checking sync.WaitGroup
 
-	// prepare go routines and add to wait group
+	// prepare bean counters for parallel duplicate appending
+	duplicates := make(chan map[string][]File, level6.MaxParallelism*2)
+	var counting sync.WaitGroup
+
+	// prepare parallel duplicate checking
+	checking.Add(level6.MaxParallelism)
 	for i := 0; i < level6.MaxParallelism; i++ {
-		wg.Add(1)
-		// go level6.CompareHashes(tasks, duplicates, &wg, i)
 		go func() {
-			defer wg.Done()
+			defer checking.Done()
 			for size := range sizes {
 				dups := make(map[string][]File)
 				for i, _ := range level6.Files[size] {
@@ -126,32 +146,35 @@ func (level6 *Level6) CompareHashes() {
 		}()
 	}
 
-	// asynchronously capture duplicates but synchronously & safely append to level6.Duplicates
+	// capture and count duplicates in parallel (but in a single thread to remain safe)
+	counting.Add(1)
 	go func() {
-		for {
-			dups := <-duplicates
+		defer counting.Done()
+		for dups := range duplicates {
 			for hash, files := range dups {
 				if len(files) > 0 {
 					if _, ok := level6.Duplicates[hash]; !ok {
 						level6.Duplicates[hash] = make([]File, 0)
 					}
 					level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
+					level6.Summary.Duplicates = level6.Summary.Duplicates + 1
 				}
 			}
 		}
 	}()
 
-	// send sizes to our channel and let our goroutines pick up the work
+	// begin comparison in parallel
 	for size, _ := range level6.Files {
 		if len(level6.Files[size]) > 1 {
 			sizes <- size
 		}
 	}
 
-	// when all of our tasks are done, we can wait for completion then close our output
+	// wait for all async operations to complete before closing down goroutines and moving forward
 	close(sizes)
-	wg.Wait()
+	checking.Wait()
 	close(duplicates)
+	counting.Wait()
 }
 
 func (level6 *Level6) Print() {
