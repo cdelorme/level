@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,12 +33,14 @@ type Level6 struct {
 func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 	if file != nil && file.Mode().IsRegular() {
 		f := File{Size: file.Size(), Path: path}
+		level6.Summary.Files = level6.Summary.Files + 1
+		if strings.Contains(path, "/.") || level6.MaxSize > 0 && f.Size <= level6.MaxSize {
+			return err
+		}
 		if _, ok := level6.Files[f.Size]; !ok {
 			level6.Files[f.Size] = make([]File, 0)
 		}
-		if level6.MaxSize <= 0 || f.Size <= level6.MaxSize {
-			level6.Files[f.Size] = append(level6.Files[f.Size], f)
-		}
+		level6.Files[f.Size] = append(level6.Files[f.Size], f)
 	}
 	return err
 }
