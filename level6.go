@@ -8,7 +8,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -223,22 +222,60 @@ func (level6 *Level6) Print() {
 }
 
 func (level6 *Level6) MoveDuplicates() {
-	err := os.Mkdir(level6.Move, 0740)
-	if err != nil {
-		level6.Logger.Error("Failed to make dir files, %s", err)
-	}
-	for hash, _ := range level6.Duplicates {
-		for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-			d := filepath.Join(level6.Move, hash)
-			if err := os.Mkdir(d, 0740); err != nil {
-				level6.Logger.Error("failed to create containing folder %s", d)
-			}
-			mv := filepath.Join(d, strconv.Itoa(i+1)+"-"+filepath.Base(level6.Duplicates[hash][i].Path))
-			if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
-				level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
-			}
+	if ok, _ := exists(level6.Move); !ok {
+		err := os.MkdirAll(level6.Move, 0740)
+		if err != nil {
+			level6.Logger.Error("Failed to make dir files, %s", err)
 		}
 	}
+
+	// prepare buffered channel and wait group for parallel file renaming
+	hashes := make(chan string, level6.MaxParallelism*2)
+	var moving sync.WaitGroup
+
+	// prepare bean counters for parallel file renaming
+	moves := make(chan int64, level6.MaxParallelism*2)
+	var moveCount sync.WaitGroup
+
+	// prepare go routines and add to wait group
+	moving.Add(level6.MaxParallelism)
+	for i := 0; i < level6.MaxParallelism; i++ {
+		go func() {
+			defer moving.Done()
+			for hash := range hashes {
+				for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+					mv := filepath.Join(level6.Move, strings.TrimPrefix(level6.Duplicates[hash][i].Path, level6.Path))
+					if err := os.MkdirAll(filepath.Dir(mv), 0740); err != nil {
+						level6.Logger.Error("failed to create containing folder %s", filepath.Dir(mv))
+					}
+					if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
+						level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
+					}
+					moves <- 1
+				}
+			}
+		}()
+	}
+
+	// count in parallel
+	moveCount.Add(1)
+	go func() {
+		defer moveCount.Done()
+		for _ = range moves {
+			level6.Summary.Moves = level6.Summary.Moves + 1
+		}
+	}()
+
+	// send each hash for parallel processing
+	for hash, _ := range level6.Duplicates {
+		hashes <- hash
+	}
+
+	// close channels and wait for done() calls before moving forward
+	close(hashes)
+	moving.Wait()
+	close(moves)
+	moveCount.Wait()
 }
 
 func (level6 *Level6) DeleteDuplicates() {
