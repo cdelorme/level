@@ -32,10 +32,12 @@ func main() {
 	appOptions.Flag("path", "path to begin scanning", "-p", "--path")
 	appOptions.Flag("delete", "delete duplicate files", "-d", "--delete")
 	appOptions.Flag("move", "move files to supplied path", "-m", "--move")
+	appOptions.Flag("max", "maximum file size to hash (in kilobytes)", "--max-size")
 	appOptions.Flag("quiet", "silence all output", "-q", "--quiet")
 	appOptions.Flag("json", "output in json", "-j", "--json")
+	appOptions.Flag("summarize", "print summary at end of operations", "-s", "--summary")
 	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
-	appOptions.Flag("profile", "create cpu profile", "-p", "--profile")
+	appOptions.Flag("profile", "create cpu profile", "--profile")
 	appOptions.Example("level6 -p ~/")
 	appOptions.Example("level6 -d -p ~/")
 	appOptions.Example("level6 -m ~/dups -p ~/")
@@ -43,18 +45,16 @@ func main() {
 
 	// apply flags
 	level6.Path, _ = maps.String(&flags, cwd, "path")
-	level6.Move, _ = maps.String(&flags, level6.Move, "move")
-	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
 	level6.Delete, _ = maps.Bool(&flags, level6.Delete, "delete")
+	level6.Move, _ = maps.String(&flags, level6.Move, "move")
+	if max, _ := maps.Int(&flags, level6.MaxSize, "max"); max > 0 {
+		level6.MaxSize = max
+	}
 	level6.Logger.Silent, _ = maps.Bool(&flags, level6.Logger.Silent, "quiet")
+	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
+	level6.Summarize, _ = maps.Bool(&flags, level6.Summarize, "summarize")
 	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
 		level6.Logger.Level = log.Debug
-	}
-
-	// if quiet is set but not delete or move then exit
-	if level6.Logger.Silent && !level6.Delete && level6.Move == "" {
-		level6.Logger.Error("quiet is set but not delete or move, exiting...")
-		return
 	}
 
 	// profiling
@@ -62,6 +62,12 @@ func main() {
 		f, _ := os.Create(profile)
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
+	}
+
+	// if quiet is set but not delete or move then exit
+	if level6.Logger.Silent && !level6.Delete && level6.Move == "" {
+		level6.Logger.Error("quiet is set but not delete or move, exiting...")
+		return
 	}
 
 	// print initial level6 state
