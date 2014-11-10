@@ -10,17 +10,21 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/cdelorme/go-log"
 )
 
 type Level6 struct {
+	Summary
 	MaxParallelism int
 	Logger         log.Logger
 	Path           string
 	Delete         bool
 	Json           bool
 	Move           string
+	Summarize      bool
+	MaxSize        int64
 	Files          map[int64][]File
 	Duplicates     map[string][]File
 }
@@ -39,7 +43,7 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 func (level6 *Level6) GenerateHashes() {
 
 	// prepare tasks channel and wait group for concurrent processing
-	sizes := make(chan int64, level6.MaxParallelism + 2)
+	sizes := make(chan int64, level6.MaxParallelism+2)
 	var wg sync.WaitGroup
 
 	// prepare go routines and add to wait group
@@ -85,7 +89,7 @@ func (level6 *Level6) GenerateHashes() {
 func (level6 *Level6) CompareHashes() {
 
 	// prepare tasks and duplicates with a wait group
-	sizes := make(chan int64, level6.MaxParallelism + 2)
+	sizes := make(chan int64, level6.MaxParallelism+2)
 	duplicates := make(chan map[string][]File)
 	var wg sync.WaitGroup
 
@@ -166,6 +170,27 @@ func (level6 *Level6) Print() {
 		level6.MoveDuplicates()
 	} else if level6.Delete {
 		level6.DeleteDuplicates()
+	}
+
+	// summarize
+	if level6.Summarize {
+		if level6.Json {
+			out, err := json.MarshalIndent(level6.Summary, "", "    ")
+			if err == nil {
+				fmt.Println(string(out))
+			}
+		} else {
+			fmt.Println("Summary:")
+			fmt.Printf("Total files scanned: %d\n", level6.Summary.Files)
+			fmt.Printf("Total duplicates found: %d\n", level6.Summary.Duplicates)
+			fmt.Printf("Total hashes generated: %d\n", level6.Summary.Hashes)
+			if level6.Move != "" {
+				fmt.Printf("Total items moved: %d\n", level6.Summary.Moves)
+			} else if level6.Delete {
+				fmt.Printf("Total items deleted: %d\n", level6.Summary.Deletes)
+			}
+			fmt.Printf("Total execution time: %s\n", time.Since(level6.Summary.Start))
+		}
 	}
 }
 

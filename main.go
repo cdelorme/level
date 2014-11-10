@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"time"
 
 	"github.com/cdelorme/go-log"
 	"github.com/cdelorme/go-maps"
@@ -18,6 +19,7 @@ func main() {
 		Logger:     log.Logger{Level: log.Error},
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
+		Summary:    Summary{Start: time.Now()},
 	}
 
 	// optimize concurrent processing
