@@ -47,6 +47,7 @@ func main() {
 
 	// apply flags
 	level6.Path, _ = maps.String(&flags, cwd, "path")
+	level6.Path, _ = filepath.Abs(level6.Path)
 	level6.Delete, _ = maps.Bool(&flags, level6.Delete, "delete")
 	level6.Move, _ = maps.String(&flags, level6.Move, "move")
 	if max, _ := maps.Float(&flags, 0, "max"); max > 0 {
