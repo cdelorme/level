@@ -251,6 +251,8 @@ func (level6 *Level6) MoveDuplicates() {
 					if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
 						level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
 					}
+
+					// send notification to bean counter
 					moves <- 1
 				}
 			}
@@ -279,12 +281,50 @@ func (level6 *Level6) MoveDuplicates() {
 }
 
 func (level6 *Level6) DeleteDuplicates() {
-	for hash, _ := range level6.Duplicates {
-		for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-			err := os.Remove(level6.Duplicates[hash][i].Path)
-			if err != nil {
-				level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
+	// prepare buffered channel and wait group for parallel file renaming
+	hashes := make(chan string, level6.MaxParallelism*2)
+	var deleting sync.WaitGroup
+
+	// prepare bean counters for parallel file renaming
+	deletes := make(chan int64, level6.MaxParallelism*2)
+	var deleteCount sync.WaitGroup
+
+	// prepare go routines and add to wait group
+	deleting.Add(level6.MaxParallelism)
+	for i := 0; i < level6.MaxParallelism; i++ {
+		go func() {
+			defer deleting.Done()
+			for hash := range hashes {
+				for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+					err := os.Remove(level6.Duplicates[hash][i].Path)
+					if err != nil {
+						level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
+					}
+
+					// send notification to bean counter
+					deletes <- 1
+				}
 			}
-		}
+		}()
 	}
+
+	// count in parallel
+	deleteCount.Add(1)
+	go func() {
+		defer deleteCount.Done()
+		for _ = range deletes {
+			level6.Summary.Deletes = level6.Summary.Deletes + 1
+		}
+	}()
+
+	// send each hash for parallel processing
+	for hash, _ := range level6.Duplicates {
+		hashes <- hash
+	}
+
+	// close channels and wait for done() calls before moving forward
+	close(hashes)
+	deleting.Wait()
+	close(deletes)
+	deleteCount.Wait()
 }
