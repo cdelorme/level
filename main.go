@@ -80,14 +80,10 @@ func main() {
 	if err := filepath.Walk(level6.Path, level6.Walk); err != nil {
 		level6.Logger.Error("failed to walk directory: %s", err)
 	}
-	level6.Logger.Debug("files: %+v", level6.Files)
 
+	// hash and compare async
 	level6.GenerateHashes()
-	level6.Logger.Debug("files /w hashes: %+v", level6.Files)
-
-	// async compare
 	level6.CompareHashes()
-	level6.Logger.Debug("duplicates: %+v", level6.Duplicates)
 
 	// @todo implement image, video, and audio comparison algorithms
 
