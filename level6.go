@@ -187,8 +187,8 @@ func (level6 *Level6) Print() {
 		} else {
 			fmt.Println("Summary:")
 			fmt.Printf("Total files scanned: %d\n", level6.Summary.Files)
-			fmt.Printf("Total duplicates found: %d\n", level6.Summary.Duplicates)
 			fmt.Printf("Total hashes generated: %d\n", level6.Summary.Hashes)
+			fmt.Printf("Total duplicates found: %d\n", level6.Summary.Duplicates)
 			if level6.Move != "" {
 				fmt.Printf("Total items moved: %d\n", level6.Summary.Moves)
 			} else if level6.Delete {
