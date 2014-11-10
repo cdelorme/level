@@ -32,9 +32,9 @@ Reasons to use it:
 
 - it doesn't contain mounds of unit tests
 - it doesn't carry heavy abstraction layers or complexity
-- it's less than 300 lines of code
+- it's less than 500 lines of code
 
-_While I would like to provide cross-platform compatibility, currently there are some issues getting the code to work in Windows, specifically the memory management and `FileInfo` seem to have bugs either in the windows go implementation or a possible memory leak._
+_While the program will build cross platform, Windows may have difficulty with the file walk, and also resource exhaustion forcing the OS to kill the program.  For windows please supply a feasible max size argument to alleviate resource consumption._
 
 
 ## application behavior
