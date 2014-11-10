@@ -35,7 +35,9 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 		if _, ok := level6.Files[f.Size]; !ok {
 			level6.Files[f.Size] = make([]File, 0)
 		}
-		level6.Files[f.Size] = append(level6.Files[f.Size], f)
+		if f.Size <= level6.MaxSize {
+			level6.Files[f.Size] = append(level6.Files[f.Size], f)
+		}
 	}
 	return err
 }
