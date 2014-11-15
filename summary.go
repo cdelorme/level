@@ -10,5 +10,6 @@ type Summary struct {
 	Sha256Duplicates int64
 	Moves            int64
 	Deletes          int64
-	Time             time.Time
+	Start            time.Time
+	Time             time.Duration
 }

@@ -60,10 +60,11 @@ func (level6 *Level6) HashAndCompare() {
 			defer crc32Hashing.Done()
 
 			// use a single shared hash
-			hash := crc32.New()
+			hash := crc32.New(nil)
+			// hash := crc32.NewIEEE()
 
 			// iterate each supplied size
-			for size := range crcSizes {
+			for size := range crc32Sizes {
 				level6.Logger.Debug("channel %d, for file size %d", i, size)
 				for i, _ := range level6.Files[size] {
 					content, err := ioutil.ReadFile(level6.Files[size][i].Path)
@@ -112,7 +113,7 @@ func (level6 *Level6) HashAndCompare() {
 	duplicates := make(chan map[string][]File, level6.MaxParallelism*2)
 
 	// channels and wait groups for counting sha256 hashes, and crc32 and sha256 duplicates
-	crc32Duplicates := make(chan int64, level6.MaxParallelism*2)
+	crc32Duplicates := make(chan int, level6.MaxParallelism*2)
 	sha256Hashes := make(chan int64, level6.MaxParallelism*2)
 	sha256Duplicates := make(chan int64, level6.MaxParallelism*2)
 	var sha256Counting sync.WaitGroup
@@ -175,7 +176,7 @@ func (level6 *Level6) HashAndCompare() {
 						hash.Reset()
 
 						// add to hash count
-						sha256Counting <- 1
+						sha256Hashes <- 1
 					}
 				}
 
@@ -196,13 +197,13 @@ func (level6 *Level6) HashAndCompare() {
 
 								// compare hashes and append duplicates
 								if crc32Dups[h][i].Hash == crc32Dups[h][f].Hash {
-									sha256[h] = append(sha256[h], crc32[h][f])
+									sha256Dups[h] = append(sha256Dups[h], crc32Dups[h][f])
 								}
 							}
 
 							// if duplicates exist by hash, add current record (first-instance)
-							if len(sha256[h]) > 0 {
-								sha256[h] = append(sha256[h], crc32[h][i])
+							if len(sha256Dups[h]) > 0 {
+								sha256Dups[h] = append(sha256Dups[h], crc32Dups[h][i])
 							}
 						}
 					}
@@ -221,7 +222,7 @@ func (level6 *Level6) HashAndCompare() {
 	go func() {
 		defer crc32DuplicateCounting.Done()
 		for found := range crc32Duplicates {
-			level6.Summary.crc32Duplicates = level6.Summary.crc32Duplicates + found
+			level6.Summary.Crc32Duplicates = level6.Summary.Crc32Duplicates + int64(found)
 		}
 	}()
 
@@ -237,7 +238,7 @@ func (level6 *Level6) HashAndCompare() {
 	// count and capture sha256 duplicates
 	sha256DuplicateCounting.Add(1)
 	go func() {
-		defer counting.Done()
+		defer sha256DuplicateCounting.Done()
 		for dups := range duplicates {
 			for hash, files := range dups {
 				if len(dups[hash]) > 0 {
@@ -245,7 +246,7 @@ func (level6 *Level6) HashAndCompare() {
 						level6.Duplicates[hash] = make([]File, 0)
 					}
 					level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
-					level6.Summary.Sha256Duplicates = level6.Summary.Sha256Duplicates + len(dups[hash])
+					level6.Summary.Sha256Duplicates = level6.Summary.Sha256Duplicates + int64(len(dups[hash]))
 				}
 			}
 		}
@@ -404,7 +405,7 @@ func (level6 *Level6) Finish() {
 	if level6.Summarize {
 
 		// calculation completion time
-		level6.Summary.Time = time.Since(level6.Summary.Time)
+		level6.Summary.Time = time.Since(level6.Summary.Start)
 
 		// print as json or as raw text
 		if level6.Json {
@@ -424,6 +425,7 @@ func (level6 *Level6) Finish() {
 			} else if level6.Delete {
 				fmt.Printf("Total items deleted: %d\n", level6.Summary.Deletes)
 			}
+			fmt.Printf("Began execution at: %s\n", level6.Summary.Start)
 			fmt.Printf("Total execution time: %s\n", level6.Summary.Time)
 		}
 	}

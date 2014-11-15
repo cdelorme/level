@@ -31,7 +31,7 @@ func main() {
 		Logger:     log.Logger{Level: log.Error},
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
-		Summary:    Summary{Time: time.Now()},
+		Summary:    Summary{Start: time.Now()},
 	}
 
 	// optimize concurrent processing
