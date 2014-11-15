@@ -31,7 +31,7 @@ func main() {
 		Logger:     log.Logger{Level: log.Error},
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
-		Summary:    Summary{Start: time.Now()},
+		Summary:    Summary{Time: time.Now()},
 	}
 
 	// optimize concurrent processing
@@ -94,11 +94,10 @@ func main() {
 	}
 
 	// hash and compare async
-	level6.GenerateHashes()
-	level6.CompareHashes()
+	level6.HashAndCompare()
 
 	// @todo implement image, video, and audio comparison algorithms
 
-	// print out results
-	level6.Print()
+	// finish up by printing results and handling any move or delete operations
+	level6.Finish()
 }
