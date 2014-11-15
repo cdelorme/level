@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -44,27 +45,25 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 	return err
 }
 
-func (level6 *Level6) GenerateHashes() {
+func (level6 *Level6) HashAndCompare() {
 
-	// prepare channel and wait group for asynchronous hashing
-	sizes := make(chan int64, level6.MaxParallelism*2)
-	var hashing sync.WaitGroup
+	// prepare channels and wait groups for async crc32 generation & counting
+	crc32Sizes := make(chan int64, level6.MaxParallelism*2)
+	crc32Hashes := make(chan int64, level6.MaxParallelism*2)
+	var crc32Hashing sync.WaitGroup
+	var crc32HashCount sync.WaitGroup
 
-	// prepare async bean counter
-	hashes := make(chan int64, level6.MaxParallelism*2)
-	var hashCount sync.WaitGroup
-
-	// prepare go routines and add to wait group
-	hashing.Add(level6.MaxParallelism)
+	// create some go routines to hash files in parallel by size
+	crc32Hashing.Add(level6.MaxParallelism)
 	for i := 0; i < level6.MaxParallelism; i++ {
 		go func() {
-			defer hashing.Done()
+			defer crc32Hashing.Done()
 
 			// use a single shared hash
-			hash := sha256.New()
+			hash := crc32.New()
 
 			// iterate each supplied size
-			for size := range sizes {
+			for size := range crcSizes {
 				level6.Logger.Debug("channel %d, for file size %d", i, size)
 				for i, _ := range level6.Files[size] {
 					content, err := ioutil.ReadFile(level6.Files[size][i].Path)
@@ -79,84 +78,174 @@ func (level6 *Level6) GenerateHashes() {
 					hash.Reset()
 
 					// append to async hash counter
-					hashes <- 1
+					crc32Hashes <- 1
 				}
 			}
 		}()
 	}
 
 	// count in parallel
-	hashCount.Add(1)
+	crc32HashCount.Add(1)
 	go func() {
-		defer hashCount.Done()
-		for _ = range hashes {
-			level6.Summary.Hashes = level6.Summary.Hashes + 1
+		defer crc32HashCount.Done()
+		for _ = range crc32Hashes {
+			level6.Summary.Crc32Hashes = level6.Summary.Crc32Hashes + 1
 		}
 	}()
 
 	// send sets of files to each go routine
 	for size, _ := range level6.Files {
 		if len(level6.Files[size]) > 1 {
-			sizes <- size
+			crc32Sizes <- size
 		}
 	}
 
 	// close channels and wait for done() calls before moving forward
-	close(sizes)
-	hashing.Wait()
-	close(hashes)
-	hashCount.Wait()
-}
+	close(crc32Sizes)
+	crc32Hashing.Wait()
+	close(crc32Hashes)
+	crc32HashCount.Wait()
 
-func (level6 *Level6) CompareHashes() {
-
-	// prepare tasks and duplicates with a wait group
+	// channels and wait group for async crc32 hash comparison, plus duplicate catching
 	sizes := make(chan int64, level6.MaxParallelism*2)
-	var checking sync.WaitGroup
-
-	// prepare bean counters for parallel duplicate appending
+	var comparison sync.WaitGroup
 	duplicates := make(chan map[string][]File, level6.MaxParallelism*2)
-	var counting sync.WaitGroup
 
-	// prepare parallel duplicate checking
-	checking.Add(level6.MaxParallelism)
+	// channels and wait groups for counting sha256 hashes, and crc32 and sha256 duplicates
+	crc32Duplicates := make(chan int64, level6.MaxParallelism*2)
+	sha256Hashes := make(chan int64, level6.MaxParallelism*2)
+	sha256Duplicates := make(chan int64, level6.MaxParallelism*2)
+	var sha256Counting sync.WaitGroup
+	var sha256DuplicateCounting sync.WaitGroup
+	var crc32DuplicateCounting sync.WaitGroup
+
+	// go routines for async crc32 comparison, sha256 hashing, then sha256 comparison
+	comparison.Add(level6.MaxParallelism)
 	for i := 0; i < level6.MaxParallelism; i++ {
 		go func() {
-			defer checking.Done()
+			defer comparison.Done()
+
+			// shared sha256 hashing component
+			hash := sha256.New()
+
 			for size := range sizes {
-				dups := make(map[string][]File)
+
+				// storage for crc32 duplicates and sha256 duplicates
+				crc32Dups := make(map[string][]File)
+				sha256Dups := make(map[string][]File)
+
+				// iterate crc32 hashes and identify duplicates
 				for i, _ := range level6.Files[size] {
-					if _, ok := dups[level6.Files[size][i].Hash]; !ok {
-						dups[level6.Files[size][i].Hash] = make([]File, 0)
+
+					// only create each index once, if it already exists assume we counted it
+					if _, ok := crc32Dups[level6.Files[size][i].Hash]; !ok {
+
+						// create a fresh index
+						crc32Dups[level6.Files[size][i].Hash] = make([]File, 0)
+
+						// iterate all files after the current index
 						for d := i + 1; d < len(level6.Files[size]); d++ {
+
+							// append any duplicates found
 							if level6.Files[size][i].Hash == level6.Files[size][d].Hash {
-								dups[level6.Files[size][i].Hash] = append(dups[level6.Files[size][i].Hash], level6.Files[size][d])
+								crc32Dups[level6.Files[size][i].Hash] = append(crc32Dups[level6.Files[size][i].Hash], level6.Files[size][d])
 							}
 						}
-						if len(dups[level6.Files[size][i].Hash]) > 0 {
-							dups[level6.Files[size][i].Hash] = append(dups[level6.Files[size][i].Hash], level6.Files[size][i])
+
+						// append first index if any duplicates were found
+						if len(crc32Dups[level6.Files[size][i].Hash]) > 0 {
+							crc32Dups[level6.Files[size][i].Hash] = append(crc32Dups[level6.Files[size][i].Hash], level6.Files[size][i])
 						}
 					}
 				}
-				if len(dups) > 0 {
-					duplicates <- dups
+
+				// send crc32 duplicates for counting
+				crc32Duplicates <- len(crc32Dups)
+
+				// generate sha256 hashes for all items in duplicates
+				for i, _ := range crc32Dups {
+					for f, _ := range crc32Dups[i] {
+
+						// read file contents (ignore errors since we read it once already)
+						content, _ := ioutil.ReadFile(crc32Dups[i][f].Path)
+
+						// apply and reset sha256 hash to duplicate
+						hash.Write(content)
+						crc32Dups[i][f].Hash = hex.EncodeToString(hash.Sum(nil))
+						hash.Reset()
+
+						// add to hash count
+						sha256Counting <- 1
+					}
+				}
+
+				// compare and move all sha256 duplicates
+				for h, _ := range crc32Dups {
+
+					// iterate all files within
+					for i, _ := range crc32Dups[h] {
+
+						// only continue if we have not already checked this hash
+						if _, ok := sha256Dups[h]; !ok {
+
+							// create index
+							sha256Dups[h] = make([]File, 0)
+
+							// compare files at index+1
+							for f := i + 1; f < len(crc32Dups[h]); f++ {
+
+								// compare hashes and append duplicates
+								if crc32Dups[h][i].Hash == crc32Dups[h][f].Hash {
+									sha256[h] = append(sha256[h], crc32[h][f])
+								}
+							}
+
+							// if duplicates exist by hash, add current record (first-instance)
+							if len(sha256[h]) > 0 {
+								sha256[h] = append(sha256[h], crc32[h][i])
+							}
+						}
+					}
+				}
+
+				// send duplicates for aggregation (append & count)
+				if len(sha256Dups) > 0 {
+					duplicates <- sha256Dups
 				}
 			}
 		}()
 	}
 
-	// capture and count duplicates in parallel (but in a single thread to remain safe)
-	counting.Add(1)
+	// count crc32 duplicates
+	crc32DuplicateCounting.Add(1)
+	go func() {
+		defer crc32DuplicateCounting.Done()
+		for found := range crc32Duplicates {
+			level6.Summary.crc32Duplicates = level6.Summary.crc32Duplicates + found
+		}
+	}()
+
+	// count sha256 hashes
+	sha256Counting.Add(1)
+	go func() {
+		defer sha256Counting.Done()
+		for _ = range sha256Hashes {
+			level6.Summary.Sha256Hashes = level6.Summary.Sha256Hashes + 1
+		}
+	}()
+
+	// count and capture sha256 duplicates
+	sha256DuplicateCounting.Add(1)
 	go func() {
 		defer counting.Done()
 		for dups := range duplicates {
 			for hash, files := range dups {
-				if len(files) > 0 {
+				if len(dups[hash]) > 0 {
 					if _, ok := level6.Duplicates[hash]; !ok {
 						level6.Duplicates[hash] = make([]File, 0)
 					}
 					level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
-					level6.Summary.Duplicates = level6.Summary.Duplicates + 1
+					level6.Summary.Sha256Duplicates = level6.Summary.Sha256Duplicates + len(dups[hash])
 				}
 			}
 		}
@@ -169,14 +258,22 @@ func (level6 *Level6) CompareHashes() {
 		}
 	}
 
-	// wait for all async operations to complete before closing down goroutines and moving forward
+	// finished sending sizes for comparison, now wait for processing to complete
 	close(sizes)
-	checking.Wait()
-	close(duplicates)
-	counting.Wait()
+	comparison.Wait()
+
+	// wait for counting to complete
+	close(crc32Duplicates)
+	close(sha256Hashes)
+	close(sha256Duplicates)
+	sha256Counting.Wait()
+	sha256DuplicateCounting.Wait()
+	crc32DuplicateCounting.Wait()
 }
 
-func (level6 *Level6) Print() {
+func (level6 *Level6) Finish() {
+
+	// if we are not operating in "quiet" mode, print found items as json or as raw text
 	if !level6.Logger.Silent {
 		if level6.Json {
 			out, err := json.MarshalIndent(level6.Duplicates, "", "    ")
@@ -192,15 +289,124 @@ func (level6 *Level6) Print() {
 		}
 	}
 
-	// move or modify
+	// determine whether to move or delete found duplicates
 	if level6.Move != "" {
-		level6.MoveDuplicates()
+
+		// attempt to create move path if it does not exist
+		if ok, _ := exists(level6.Move); !ok {
+			err := os.MkdirAll(level6.Move, 0740)
+			if err != nil {
+				level6.Logger.Error("Failed to make dir files, %s", err)
+			}
+		}
+
+		// prepare buffered channel and wait group for parallel file renaming
+		hashes := make(chan string, level6.MaxParallelism*2)
+		var moving sync.WaitGroup
+
+		// prepare bean counters for parallel file renaming
+		moves := make(chan int64, level6.MaxParallelism*2)
+		var moveCount sync.WaitGroup
+
+		// prepare go routines and add to wait group
+		moving.Add(level6.MaxParallelism)
+		for i := 0; i < level6.MaxParallelism; i++ {
+			go func() {
+				defer moving.Done()
+				for hash := range hashes {
+					for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+						mv := filepath.Join(level6.Move, strings.TrimPrefix(level6.Duplicates[hash][i].Path, level6.Path))
+						if err := os.MkdirAll(filepath.Dir(mv), 0740); err != nil {
+							level6.Logger.Error("failed to create containing folder %s", filepath.Dir(mv))
+						}
+						if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
+							level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
+						}
+
+						// send notification to bean counter
+						moves <- 1
+					}
+				}
+			}()
+		}
+
+		// count in parallel
+		moveCount.Add(1)
+		go func() {
+			defer moveCount.Done()
+			for _ = range moves {
+				level6.Summary.Moves = level6.Summary.Moves + 1
+			}
+		}()
+
+		// send each hash for parallel processing
+		for hash, _ := range level6.Duplicates {
+			hashes <- hash
+		}
+
+		// close channels and wait for done() calls before moving forward
+		close(hashes)
+		moving.Wait()
+		close(moves)
+		moveCount.Wait()
+
 	} else if level6.Delete {
-		level6.DeleteDuplicates()
+
+		// prepare buffered channel and wait group for parallel file renaming
+		hashes := make(chan string, level6.MaxParallelism*2)
+		var deleting sync.WaitGroup
+
+		// prepare bean counters for parallel file renaming
+		deletes := make(chan int64, level6.MaxParallelism*2)
+		var deleteCount sync.WaitGroup
+
+		// prepare go routines and add to wait group
+		deleting.Add(level6.MaxParallelism)
+		for i := 0; i < level6.MaxParallelism; i++ {
+			go func() {
+				defer deleting.Done()
+				for hash := range hashes {
+					for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
+						err := os.Remove(level6.Duplicates[hash][i].Path)
+						if err != nil {
+							level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
+						}
+
+						// send notification to bean counter
+						deletes <- 1
+					}
+				}
+			}()
+		}
+
+		// count in parallel
+		deleteCount.Add(1)
+		go func() {
+			defer deleteCount.Done()
+			for _ = range deletes {
+				level6.Summary.Deletes = level6.Summary.Deletes + 1
+			}
+		}()
+
+		// send each hash for parallel processing
+		for hash, _ := range level6.Duplicates {
+			hashes <- hash
+		}
+
+		// close channels and wait for done() calls before moving forward
+		close(hashes)
+		deleting.Wait()
+		close(deletes)
+		deleteCount.Wait()
 	}
 
-	// summarize
+	// determine whether to print summary (ignores "quiet" mode)
 	if level6.Summarize {
+
+		// calculation completion time
+		level6.Summary.Time = time.Since(level6.Summary.Time)
+
+		// print as json or as raw text
 		if level6.Json {
 			out, err := json.MarshalIndent(level6.Summary, "", "    ")
 			if err == nil {
@@ -209,122 +415,16 @@ func (level6 *Level6) Print() {
 		} else {
 			fmt.Println("Summary:")
 			fmt.Printf("Total files scanned: %d\n", level6.Summary.Files)
-			fmt.Printf("Total hashes generated: %d\n", level6.Summary.Hashes)
-			fmt.Printf("Total duplicates found: %d\n", level6.Summary.Duplicates)
+			fmt.Printf("Total crc32 hashes generated: %d\n", level6.Summary.Crc32Hashes)
+			fmt.Printf("Total crc32 duplicates found: %d\n", level6.Summary.Crc32Duplicates)
+			fmt.Printf("Total sha256 hashes generated: %d\n", level6.Summary.Sha256Hashes)
+			fmt.Printf("Total sha256 duplicates found: %d\n", level6.Summary.Sha256Duplicates)
 			if level6.Move != "" {
 				fmt.Printf("Total items moved: %d\n", level6.Summary.Moves)
 			} else if level6.Delete {
 				fmt.Printf("Total items deleted: %d\n", level6.Summary.Deletes)
 			}
-			fmt.Printf("Total execution time: %s\n", time.Since(level6.Summary.Start))
+			fmt.Printf("Total execution time: %s\n", level6.Summary.Time)
 		}
 	}
-}
-
-func (level6 *Level6) MoveDuplicates() {
-	if ok, _ := exists(level6.Move); !ok {
-		err := os.MkdirAll(level6.Move, 0740)
-		if err != nil {
-			level6.Logger.Error("Failed to make dir files, %s", err)
-		}
-	}
-
-	// prepare buffered channel and wait group for parallel file renaming
-	hashes := make(chan string, level6.MaxParallelism*2)
-	var moving sync.WaitGroup
-
-	// prepare bean counters for parallel file renaming
-	moves := make(chan int64, level6.MaxParallelism*2)
-	var moveCount sync.WaitGroup
-
-	// prepare go routines and add to wait group
-	moving.Add(level6.MaxParallelism)
-	for i := 0; i < level6.MaxParallelism; i++ {
-		go func() {
-			defer moving.Done()
-			for hash := range hashes {
-				for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-					mv := filepath.Join(level6.Move, strings.TrimPrefix(level6.Duplicates[hash][i].Path, level6.Path))
-					if err := os.MkdirAll(filepath.Dir(mv), 0740); err != nil {
-						level6.Logger.Error("failed to create containing folder %s", filepath.Dir(mv))
-					}
-					if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
-						level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
-					}
-
-					// send notification to bean counter
-					moves <- 1
-				}
-			}
-		}()
-	}
-
-	// count in parallel
-	moveCount.Add(1)
-	go func() {
-		defer moveCount.Done()
-		for _ = range moves {
-			level6.Summary.Moves = level6.Summary.Moves + 1
-		}
-	}()
-
-	// send each hash for parallel processing
-	for hash, _ := range level6.Duplicates {
-		hashes <- hash
-	}
-
-	// close channels and wait for done() calls before moving forward
-	close(hashes)
-	moving.Wait()
-	close(moves)
-	moveCount.Wait()
-}
-
-func (level6 *Level6) DeleteDuplicates() {
-	// prepare buffered channel and wait group for parallel file renaming
-	hashes := make(chan string, level6.MaxParallelism*2)
-	var deleting sync.WaitGroup
-
-	// prepare bean counters for parallel file renaming
-	deletes := make(chan int64, level6.MaxParallelism*2)
-	var deleteCount sync.WaitGroup
-
-	// prepare go routines and add to wait group
-	deleting.Add(level6.MaxParallelism)
-	for i := 0; i < level6.MaxParallelism; i++ {
-		go func() {
-			defer deleting.Done()
-			for hash := range hashes {
-				for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-					err := os.Remove(level6.Duplicates[hash][i].Path)
-					if err != nil {
-						level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
-					}
-
-					// send notification to bean counter
-					deletes <- 1
-				}
-			}
-		}()
-	}
-
-	// count in parallel
-	deleteCount.Add(1)
-	go func() {
-		defer deleteCount.Done()
-		for _ = range deletes {
-			level6.Summary.Deletes = level6.Summary.Deletes + 1
-		}
-	}()
-
-	// send each hash for parallel processing
-	for hash, _ := range level6.Duplicates {
-		hashes <- hash
-	}
-
-	// close channels and wait for done() calls before moving forward
-	close(hashes)
-	deleting.Wait()
-	close(deletes)
-	deleteCount.Wait()
 }
