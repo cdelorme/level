@@ -32,7 +32,7 @@ Reasons to use it:
 
 - it doesn't contain mounds of unit tests
 - it doesn't carry heavy abstraction layers or complexity
-- it's less than 500 lines of code
+- it's less than 600 lines of code
 
 _While the program will build cross platform, Windows may have difficulty with the file walk, and also resource exhaustion forcing the OS to kill the program.  For windows please supply a feasible max size argument to alleviate resource consumption._
 
@@ -98,7 +98,9 @@ If you want to test it you can clone the repository and run `go get` and `go bui
 
 ## hash comparison
 
-This project uses sha256 hashing to ensure unique file data.  It also only compares two files with equal sizes.
+To increase performnce, this project will generate crc32 hashes first, and only run sha256 against duplicates among the crc32 hashes.  This should greatly reduce processing time.
+
+This project uses sha256 hashing to ensure unique file data, allowing you to make the decision to delete or move files with confidence.  To further reduce possible conflicts, it only compares hashes of files of equal size.
 
 [![sha256 is preferred](http://i.stack.imgur.com/46Vwb.jpg)](http://crypto.stackexchange.com/questions/1170/best-way-to-reduce-chance-of-hash-collisions-multiple-hashes-or-larger-hash)
 
