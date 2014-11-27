@@ -107,6 +107,7 @@ This project uses sha256 hashing to ensure unique file data, allowing you to mak
 
 ## future plans
 
+- optional high-fidelity flag that performs full-binary comparison on files that have sha256 matches for 100% match accuracy
 - implement complex image, video, and audio comparison algorithms with support for things like
     - partial image, video, or audio clips (including images from video)
     - images that have been:

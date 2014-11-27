@@ -265,6 +265,8 @@ func (level6 *Level6) HashAndCompare() {
 	close(duplicates)
 	sha256Counting.Wait()
 	sha256DuplicateCounting.Wait()
+
+	// @todo add a high-fidelity option that performs full binary byte-by-byte comparison of two or more files
 }
 
 func (level6 *Level6) Finish() {
