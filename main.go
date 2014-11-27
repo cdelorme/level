@@ -56,7 +56,7 @@ func main() {
 	appOptions.Flag("json", "output in json", "-j", "--json")
 	appOptions.Flag("summarize", "print summary at end of operations", "-s", "--summary")
 	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
-	appOptions.Flag("profile", "create cpu profile", "--profile")
+	appOptions.Flag("profile", "output cpu profile to supplied file path", "--profile")
 	appOptions.Example("level6 -p ~/")
 	appOptions.Example("level6 -d -p ~/")
 	appOptions.Example("level6 -m ~/dups -p ~/")
