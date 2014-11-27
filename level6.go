@@ -67,16 +67,15 @@ func (level6 *Level6) HashAndCompare() {
 	// create some go routines to hash files in parallel by size
 	crc32Hashing.Add(level6.MaxParallelism)
 	for i := 0; i < level6.MaxParallelism; i++ {
-		go func() {
+		go func(num int) {
 			defer crc32Hashing.Done()
 
-			// use a single shared hash
+			// use a single shared hash per-channel
 			hash := crc32.New(nil)
-			// hash := crc32.NewIEEE()
 
 			// iterate each supplied size
 			for size := range crc32Sizes {
-				level6.Logger.Debug("channel %d, for file size %d", i, size)
+				level6.Logger.Debug("channel %d, for file size %d", num, size)
 				for i, _ := range level6.Files[size] {
 					content, err := ioutil.ReadFile(level6.Files[size][i].Path)
 					if err != nil {
@@ -93,7 +92,7 @@ func (level6 *Level6) HashAndCompare() {
 					crc32Hashes <- 1
 				}
 			}
-		}()
+		}(i)
 	}
 
 	// count in parallel
@@ -274,13 +273,14 @@ func (level6 *Level6) HashAndCompare() {
 	close(sizes)
 	comparison.Wait()
 
-	// wait for counting to complete
+	// close the remaining channels and finish waiting for the counting to complete
 	close(crc32Duplicates)
 	close(sha256Hashes)
 	close(sha256Duplicates)
+	close(duplicates)
+	crc32DuplicateCounting.Wait()
 	sha256Counting.Wait()
 	sha256DuplicateCounting.Wait()
-	crc32DuplicateCounting.Wait()
 }
 
 func (level6 *Level6) Finish() {
