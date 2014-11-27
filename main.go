@@ -5,12 +5,16 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strings"
 	"time"
 
 	"github.com/cdelorme/go-log"
 	"github.com/cdelorme/go-maps"
 	"github.com/cdelorme/go-option"
 )
+
+// excludes array
+var excludes = []string{"/."}
 
 // check that a path exists (not whether it is a directory, nor whether it has rw for the current user)
 func exists(path string) (bool, error) {
@@ -47,6 +51,7 @@ func main() {
 	appOptions.Flag("delete", "delete duplicate files", "-d", "--delete")
 	appOptions.Flag("move", "move files to supplied path", "-m", "--move")
 	appOptions.Flag("max", "maximum file size to hash (in kilobytes)", "--max-size")
+	appOptions.Flag("excludes", "comma-delimited patterns to exclude", "-e", "--excludes")
 	appOptions.Flag("quiet", "silence all output", "-q", "--quiet")
 	appOptions.Flag("json", "output in json", "-j", "--json")
 	appOptions.Flag("summarize", "print summary at end of operations", "-s", "--summary")
@@ -71,6 +76,12 @@ func main() {
 	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
 		level6.Logger.Level = log.Debug
 	}
+
+	// parse excludes
+	if e, err := maps.String(&flags, "", "excludes"); err == nil {
+		excludes = append(excludes, strings.Split(e, ",")...)
+	}
+	level6.Logger.Debug("excluding: %v", excludes)
 
 	// profiling
 	if profile, _ := maps.String(&flags, "", "profile"); profile != "" {
