@@ -122,13 +122,11 @@ func (level6 *Level6) HashAndCompare() {
 	var comparison sync.WaitGroup
 	duplicates := make(chan map[string][]File, level6.MaxParallelism*2)
 
-	// channels and wait groups for counting sha256 hashes, and crc32 and sha256 duplicates
-	crc32Duplicates := make(chan int, level6.MaxParallelism*2)
+	// channels and wait groups for counting sha256 hashes and duplicates
 	sha256Hashes := make(chan int64, level6.MaxParallelism*2)
 	sha256Duplicates := make(chan int64, level6.MaxParallelism*2)
 	var sha256Counting sync.WaitGroup
 	var sha256DuplicateCounting sync.WaitGroup
-	var crc32DuplicateCounting sync.WaitGroup
 
 	// go routines for async crc32 comparison, sha256 hashing, then sha256 comparison
 	comparison.Add(level6.MaxParallelism)
@@ -169,9 +167,6 @@ func (level6 *Level6) HashAndCompare() {
 						}
 					}
 				}
-
-				// send crc32 duplicates for counting
-				crc32Duplicates <- len(crc32Dups)
 
 				// generate sha256 hashes for all items in duplicates
 				for i, _ := range crc32Dups {
@@ -227,15 +222,6 @@ func (level6 *Level6) HashAndCompare() {
 		}()
 	}
 
-	// count crc32 duplicates
-	crc32DuplicateCounting.Add(1)
-	go func() {
-		defer crc32DuplicateCounting.Done()
-		for found := range crc32Duplicates {
-			level6.Summary.Crc32Duplicates = level6.Summary.Crc32Duplicates + int64(found)
-		}
-	}()
-
 	// count sha256 hashes
 	sha256Counting.Add(1)
 	go func() {
@@ -256,7 +242,7 @@ func (level6 *Level6) HashAndCompare() {
 						level6.Duplicates[hash] = make([]File, 0)
 					}
 					level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
-					level6.Summary.Sha256Duplicates = level6.Summary.Sha256Duplicates + int64(len(dups[hash]))
+					level6.Summary.Duplicates = level6.Summary.Duplicates + int64(len(dups[hash]))
 				}
 			}
 		}
@@ -274,11 +260,9 @@ func (level6 *Level6) HashAndCompare() {
 	comparison.Wait()
 
 	// close the remaining channels and finish waiting for the counting to complete
-	close(crc32Duplicates)
 	close(sha256Hashes)
 	close(sha256Duplicates)
 	close(duplicates)
-	crc32DuplicateCounting.Wait()
 	sha256Counting.Wait()
 	sha256DuplicateCounting.Wait()
 }
@@ -428,9 +412,8 @@ func (level6 *Level6) Finish() {
 			fmt.Println("Summary:")
 			fmt.Printf("Total files scanned: %d\n", level6.Summary.Files)
 			fmt.Printf("Total crc32 hashes generated: %d\n", level6.Summary.Crc32Hashes)
-			fmt.Printf("Total crc32 duplicates found: %d\n", level6.Summary.Crc32Duplicates)
 			fmt.Printf("Total sha256 hashes generated: %d\n", level6.Summary.Sha256Hashes)
-			fmt.Printf("Total sha256 duplicates found: %d\n", level6.Summary.Sha256Duplicates)
+			fmt.Printf("Total duplicates found: %d\n", level6.Summary.Duplicates)
 			if level6.Move != "" {
 				fmt.Printf("Total items moved: %d\n", level6.Summary.Moves)
 			} else if level6.Delete {
