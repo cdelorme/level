@@ -1,4 +1,4 @@
-package level6
+package l6
 
 type File struct {
 	Path string
