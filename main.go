@@ -12,22 +12,22 @@ import (
 	"github.com/cdelorme/go-maps"
 	"github.com/cdelorme/go-option"
 
-	"github.com/cdelorme/level6/level6"
+	"github.com/cdelorme/level6/l6"
 )
 
 func main() {
 
 	// prepare level6 /w logger and empty maps
-	l6 := level6.Level6{
+	level6 :=level6.Level6{
 		Logger:     log.Logger{Level: log.Error},
-		Files:      make(map[int64][]level6.File),
-		Duplicates: make(map[string][]level6.File),
-		Summary:    level6.Summary{Start: time.Now()},
+		Files:      make(map[int64][]l6.File),
+		Duplicates: make(map[string][]l6.File),
+		Summary:    l6.Summary{Start: time.Now()},
 		Excludes:   []string{"/."},
 	}
 
 	// optimize concurrent processing
-	l6.MaxParallelism = runtime.NumCPU()
+	level6.MaxParallelism = runtime.NumCPU()
 	runtime.GOMAXPROCS(l6.MaxParallelism)
 
 	// get current directory
@@ -51,23 +51,23 @@ func main() {
 	flags := appOptions.Parse()
 
 	// apply flags
-	l6.Path, _ = maps.String(&flags, cwd, "path")
-	l6.Path, _ = filepath.Abs(l6.Path)
-	l6.Delete, _ = maps.Bool(&flags, l6.Delete, "delete")
-	l6.Move, _ = maps.String(&flags, l6.Move, "move")
+	level6.Path, _ = maps.String(&flags, cwd, "path")
+	level6.Path, _ = filepath.Abs(l6.Path)
+	level6.Delete, _ = maps.Bool(&flags,level6.Delete, "delete")
+	level6.Move, _ = maps.String(&flags,level6.Move, "move")
 	if max, _ := maps.Float(&flags, 0, "max"); max > 0 {
-		l6.MaxSize = int64(max * 1024)
+		level6.MaxSize = int64(max * 1024)
 	}
-	l6.Logger.Silent, _ = maps.Bool(&flags, l6.Logger.Silent, "quiet")
-	l6.Json, _ = maps.Bool(&flags, l6.Json, "json")
-	l6.Summarize, _ = maps.Bool(&flags, l6.Summarize, "summarize")
+	level6.Logger.Silent, _ = maps.Bool(&flags,level6.Logger.Silent, "quiet")
+	level6.Json, _ = maps.Bool(&flags,level6.Json, "json")
+	level6.Summarize, _ = maps.Bool(&flags,level6.Summarize, "summarize")
 	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
-		l6.Logger.Level = log.Debug
+		level6.Logger.Level = log.Debug
 	}
 
 	// parse excludes
 	if e, err := maps.String(&flags, "", "excludes"); err == nil {
-		l6.Excludes = append(l6.Excludes, strings.Split(strings.ToLower(e), ",")...)
+		level6.Excludes = append(l6.Excludes, strings.Split(strings.ToLower(e), ",")...)
 	}
 
 	// profiling
@@ -78,24 +78,24 @@ func main() {
 	}
 
 	// if quiet is set but not delete or move then exit
-	if l6.Logger.Silent && !l6.Delete && l6.Move == "" {
-		l6.Logger.Error("quiet is set but not delete or move, exiting...")
+	iflevel6.Logger.Silent && !l6.Delete &&level6.Move == "" {
+		level6.Logger.Error("quiet is set but not delete or move, exiting...")
 		return
 	}
 
 	// print initial level6 state
-	l6.Logger.Debug("initial application state: %+v", l6)
+	level6.Logger.Debug("initial application state: %+v", l6)
 
 	// build list of files grouped by size
-	if err := filepath.Walk(l6.Path, l6.Walk); err != nil {
-		l6.Logger.Error("failed to walk directory: %s", err)
+	if err := filepath.Walk(l6.Path,level6.Walk); err != nil {
+		level6.Logger.Error("failed to walk directory: %s", err)
 	}
 
 	// hash and compare async
-	l6.HashAndCompare()
+	level6.HashAndCompare()
 
 	// @todo implement image, video, and audio comparison algorithms
 
 	// finish up by printing results and handling any move or delete operations
-	l6.Finish()
+	level6.Finish()
 }
