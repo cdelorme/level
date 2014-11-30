@@ -110,6 +110,8 @@ This project uses sha256 hashing to ensure unique file data, allowing you to mak
 
 ## future plans
 
+- separate the main components of level6 into a library so they can be imported and used anywhere
+- create a gui interface wrapper for the cli
 - optional high-fidelity flag for full-binary comparison
     - optionally performed on any sha256 matches
     - can also set max-size to a sane default, and run full-binary for files above that size limit
@@ -120,6 +122,5 @@ This project uses sha256 hashing to ensure unique file data, allowing you to mak
         - rotated
         - cropped
         - discolored
-- create a gui interface wrapper for the cli
 
 _Some ideas for comparison include keypoint detection and decision trees, but I'll have to do a bit of research before I'm ready to take the code to the next level._
