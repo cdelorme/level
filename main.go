@@ -18,7 +18,7 @@ import (
 func main() {
 
 	// prepare level6 /w logger and empty maps
-	level6 :=level6.Level6{
+	level6 := l6.Level6{
 		Logger:     log.Logger{Level: log.Error},
 		Files:      make(map[int64][]l6.File),
 		Duplicates: make(map[string][]l6.File),
@@ -28,7 +28,7 @@ func main() {
 
 	// optimize concurrent processing
 	level6.MaxParallelism = runtime.NumCPU()
-	runtime.GOMAXPROCS(l6.MaxParallelism)
+	runtime.GOMAXPROCS(level6.MaxParallelism)
 
 	// get current directory
 	cwd, _ := os.Getwd()
@@ -52,22 +52,22 @@ func main() {
 
 	// apply flags
 	level6.Path, _ = maps.String(&flags, cwd, "path")
-	level6.Path, _ = filepath.Abs(l6.Path)
-	level6.Delete, _ = maps.Bool(&flags,level6.Delete, "delete")
-	level6.Move, _ = maps.String(&flags,level6.Move, "move")
+	level6.Path, _ = filepath.Abs(level6.Path)
+	level6.Delete, _ = maps.Bool(&flags, level6.Delete, "delete")
+	level6.Move, _ = maps.String(&flags, level6.Move, "move")
 	if max, _ := maps.Float(&flags, 0, "max"); max > 0 {
 		level6.MaxSize = int64(max * 1024)
 	}
-	level6.Logger.Silent, _ = maps.Bool(&flags,level6.Logger.Silent, "quiet")
-	level6.Json, _ = maps.Bool(&flags,level6.Json, "json")
-	level6.Summarize, _ = maps.Bool(&flags,level6.Summarize, "summarize")
+	level6.Logger.Silent, _ = maps.Bool(&flags, level6.Logger.Silent, "quiet")
+	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
+	level6.Summarize, _ = maps.Bool(&flags, level6.Summarize, "summarize")
 	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
 		level6.Logger.Level = log.Debug
 	}
 
 	// parse excludes
 	if e, err := maps.String(&flags, "", "excludes"); err == nil {
-		level6.Excludes = append(l6.Excludes, strings.Split(strings.ToLower(e), ",")...)
+		level6.Excludes = append(level6.Excludes, strings.Split(strings.ToLower(e), ",")...)
 	}
 
 	// profiling
@@ -78,16 +78,16 @@ func main() {
 	}
 
 	// if quiet is set but not delete or move then exit
-	iflevel6.Logger.Silent && !l6.Delete &&level6.Move == "" {
+	if level6.Logger.Silent && !level6.Delete && level6.Move == "" {
 		level6.Logger.Error("quiet is set but not delete or move, exiting...")
 		return
 	}
 
 	// print initial level6 state
-	level6.Logger.Debug("initial application state: %+v", l6)
+	level6.Logger.Debug("initial application state: %+v", level6)
 
 	// build list of files grouped by size
-	if err := filepath.Walk(l6.Path,level6.Walk); err != nil {
+	if err := filepath.Walk(level6.Path, level6.Walk); err != nil {
 		level6.Logger.Error("failed to walk directory: %s", err)
 	}
 
