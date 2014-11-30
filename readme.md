@@ -44,6 +44,7 @@ Switches:
 - `path` is optional (uses pwd|cwd otherwise)
 - `delete`
 - `move` overrides `delete`
+- `excludes`
 - `quiet` overrides `verbose` and expects `delete` or `move`
 - `max-size` of files to hash in kilobytes
 - `json` to print pretty or for sharing with another application
@@ -54,6 +55,8 @@ Switches:
 The applications default behavior is to simply print out the duplicates to stdout.  Supplying the `json` flag will print the results as a json array.
 
 It will exit if `quiet` is set, but neither `delete` nor `move` are assigned.
+
+The `excludes` are a case-insensative dual-sided wildcard path-contains check that will ignore any files containing the supplied text(s).  Supplying multiple paths to ignore?  Just add a comma.  **By default it ignores any files that begin with a period by checking for `/.`.**
 
 If no `path` has been supplied, it will use the current working directory.
 
