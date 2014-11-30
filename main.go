@@ -20,9 +20,9 @@ func main() {
 	// prepare level6 /w logger and empty maps
 	l6 := level6.Level6{
 		Logger:     log.Logger{Level: log.Error},
-		Files:      make(map[int64][]File),
-		Duplicates: make(map[string][]File),
-		Summary:    Summary{Start: time.Now()},
+		Files:      make(map[int64][]level6.File),
+		Duplicates: make(map[string][]level6.File),
+		Summary:    level6.Summary{Start: time.Now()},
 		Excludes:   []string{"/."},
 	}
 
