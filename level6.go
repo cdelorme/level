@@ -36,13 +36,13 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 		level6.Summary.Files = level6.Summary.Files + 1
 
 		// if the size is above max-size skip file
-		if level6.MaxSize > 0 && f.Size <= level6.MaxSize {
+		if level6.MaxSize > 0 && f.Size >= level6.MaxSize {
 			return err
 		}
 
 		// if path contains anything in excludes, skip file
 		for i, _ := range excludes {
-			if strings.Contains(path, excludes[i]) {
+			if strings.Contains(strings.ToLower(path), excludes[i]) {
 				return err
 			}
 		}

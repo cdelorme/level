@@ -79,7 +79,7 @@ func main() {
 
 	// parse excludes
 	if e, err := maps.String(&flags, "", "excludes"); err == nil {
-		excludes = append(excludes, strings.Split(e, ",")...)
+		excludes = append(excludes, strings.Split(strings.ToLower(e), ",")...)
 	}
 	level6.Logger.Debug("excluding: %v", excludes)
 
