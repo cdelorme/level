@@ -13,21 +13,6 @@ import (
 	"github.com/cdelorme/go-option"
 )
 
-// excludes array
-var excludes = []string{"/."}
-
-// check that a path exists (not whether it is a directory, nor whether it has rw for the current user)
-func exists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
 func main() {
 
 	// prepare level6 /w logger and empty maps
@@ -36,6 +21,7 @@ func main() {
 		Files:      make(map[int64][]File),
 		Duplicates: make(map[string][]File),
 		Summary:    Summary{Start: time.Now()},
+		Excludes:   []string{"/."},
 	}
 
 	// optimize concurrent processing
@@ -79,9 +65,8 @@ func main() {
 
 	// parse excludes
 	if e, err := maps.String(&flags, "", "excludes"); err == nil {
-		excludes = append(excludes, strings.Split(strings.ToLower(e), ",")...)
+		level6.Excludes = append(level6.Excludes, strings.Split(strings.ToLower(e), ",")...)
 	}
-	level6.Logger.Debug("excluding: %v", excludes)
 
 	// profiling
 	if profile, _ := maps.String(&flags, "", "profile"); profile != "" {

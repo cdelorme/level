@@ -16,6 +16,20 @@ import (
 	"github.com/cdelorme/go-log"
 )
 
+// check that a path exists
+// not whether it is a directory
+// nor whether it has rw for the current user
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
+}
+
 type Level6 struct {
 	Summary
 	MaxParallelism int
@@ -26,6 +40,7 @@ type Level6 struct {
 	Move           string
 	Summarize      bool
 	MaxSize        int64
+	Excludes       []string
 	Files          map[int64][]File
 	Duplicates     map[string][]File
 }
@@ -41,8 +56,8 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 		}
 
 		// if path contains anything in excludes, skip file
-		for i, _ := range excludes {
-			if strings.Contains(strings.ToLower(path), excludes[i]) {
+		for i, _ := range level6.Excludes {
+			if strings.Contains(strings.ToLower(path), level6.Excludes[i]) {
 				return err
 			}
 		}
@@ -59,8 +74,8 @@ func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
 func (level6 *Level6) HashAndCompare() {
 
 	// prepare channels and wait groups for async crc32 generation & counting
-	crc32Sizes := make(chan int64, level6.MaxParallelism*2)
-	crc32Hashes := make(chan int64, level6.MaxParallelism*2)
+	crc32Sizes := make(chan int64)
+	crc32Hashes := make(chan int64)
 	var crc32Hashing sync.WaitGroup
 	var crc32HashCount sync.WaitGroup
 
@@ -118,13 +133,13 @@ func (level6 *Level6) HashAndCompare() {
 	crc32HashCount.Wait()
 
 	// channels and wait group for async crc32 hash comparison, plus duplicate catching
-	sizes := make(chan int64, level6.MaxParallelism*2)
+	sizes := make(chan int64)
 	var comparison sync.WaitGroup
-	duplicates := make(chan map[string][]File, level6.MaxParallelism*2)
+	duplicates := make(chan map[string][]File)
 
 	// channels and wait groups for counting sha256 hashes and duplicates
-	sha256Hashes := make(chan int64, level6.MaxParallelism*2)
-	sha256Duplicates := make(chan int64, level6.MaxParallelism*2)
+	sha256Hashes := make(chan int64)
+	sha256Duplicates := make(chan int64)
 	var sha256Counting sync.WaitGroup
 	var sha256DuplicateCounting sync.WaitGroup
 
@@ -299,11 +314,11 @@ func (level6 *Level6) Finish() {
 		}
 
 		// prepare buffered channel and wait group for parallel file renaming
-		hashes := make(chan string, level6.MaxParallelism*2)
+		hashes := make(chan string)
 		var moving sync.WaitGroup
 
 		// prepare bean counters for parallel file renaming
-		moves := make(chan int64, level6.MaxParallelism*2)
+		moves := make(chan int64)
 		var moveCount sync.WaitGroup
 
 		// prepare go routines and add to wait group
@@ -351,11 +366,11 @@ func (level6 *Level6) Finish() {
 	} else if level6.Delete {
 
 		// prepare buffered channel and wait group for parallel file renaming
-		hashes := make(chan string, level6.MaxParallelism*2)
+		hashes := make(chan string)
 		var deleting sync.WaitGroup
 
 		// prepare bean counters for parallel file renaming
-		deletes := make(chan int64, level6.MaxParallelism*2)
+		deletes := make(chan int64)
 		var deleteCount sync.WaitGroup
 
 		// prepare go routines and add to wait group
