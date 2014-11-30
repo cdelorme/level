@@ -1,4 +1,4 @@
-package main
+package level6
 
 import (
 	"crypto/sha256"

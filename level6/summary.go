@@ -1,4 +1,4 @@
-package main
+package level6
 
 import "time"
 
