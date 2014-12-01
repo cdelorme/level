@@ -110,7 +110,6 @@ This project uses sha256 hashing to ensure unique file data, allowing you to mak
 
 ## future plans
 
-- separate the main components of level6 into a library so they can be imported and used anywhere
 - create a gui interface wrapper for the cli
 - optional high-fidelity flag for full-binary comparison
     - optionally performed on any sha256 matches
