@@ -77,8 +77,8 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	// if quiet is set but not delete or move then exit
-	if level6.Logger.Silent && !level6.Delete && level6.Move == "" {
+	// if quiet is set, but no action such as summary delete or move then exit
+	if level6.Logger.Silent && !level6.Summarize && !level6.Delete && level6.Move == "" {
 		level6.Logger.Error("quiet is set but not delete or move, exiting...")
 		return
 	}
