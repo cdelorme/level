@@ -45,9 +45,9 @@ func main() {
 	appOptions.Flag("summarize", "print summary at end of operations", "-s", "--summary")
 	appOptions.Flag("verbose", "verbose event output", "-v", "--verbose")
 	appOptions.Flag("profile", "output cpu profile to supplied file path", "--profile")
-	appOptions.Example("level6 -p ~/")
-	appOptions.Example("level6 -d -p ~/")
-	appOptions.Example("level6 -m ~/dups -p ~/")
+	appOptions.Example("-p ~/")
+	appOptions.Example("-d -p ~/")
+	appOptions.Example("-m ~/dups -p ~/")
 	flags := appOptions.Parse()
 
 	// apply flags
