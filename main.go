@@ -19,12 +19,13 @@ func main() {
 
 	// prepare level6 /w logger and empty maps
 	level6 := l6.Level6{
-		Logger:     log.Logger{Level: log.Error},
+		Logger:     log.Logger{Severity: log.Error},
 		Files:      make(map[int64][]l6.File),
 		Duplicates: make(map[string][]l6.File),
 		Summary:    l6.Summary{Start: time.Now()},
 		Excludes:   []string{"/."},
 	}
+	level6.Logger.Color()
 
 	// optimize concurrent processing
 	level6.MaxParallelism = runtime.NumCPU()
