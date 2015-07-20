@@ -63,7 +63,7 @@ func main() {
 	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
 	level6.Summarize, _ = maps.Bool(&flags, level6.Summarize, "summarize")
 	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
-		level6.Logger.Level = log.Debug
+		level6.Logger.Priority = log.Debug
 	}
 
 	// parse excludes
