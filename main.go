@@ -52,27 +52,27 @@ func main() {
 	flags := appOptions.Parse()
 
 	// apply flags
-	level6.Path, _ = maps.String(&flags, cwd, "path")
+	level6.Path, _ = maps.String(flags, cwd, "path")
 	level6.Path, _ = filepath.Abs(level6.Path)
-	level6.Delete, _ = maps.Bool(&flags, level6.Delete, "delete")
-	level6.Move, _ = maps.String(&flags, level6.Move, "move")
-	if max, _ := maps.Float(&flags, 0, "max"); max > 0 {
+	level6.Delete, _ = maps.Bool(flags, level6.Delete, "delete")
+	level6.Move, _ = maps.String(flags, level6.Move, "move")
+	if max, _ := maps.Float(flags, 0, "max"); max > 0 {
 		level6.MaxSize = int64(max * 1024)
 	}
-	level6.Logger.Silent, _ = maps.Bool(&flags, level6.Logger.Silent, "quiet")
-	level6.Json, _ = maps.Bool(&flags, level6.Json, "json")
-	level6.Summarize, _ = maps.Bool(&flags, level6.Summarize, "summarize")
-	if ok, _ := maps.Bool(&flags, false, "verbose"); ok {
+	level6.Logger.Silent, _ = maps.Bool(flags, level6.Logger.Silent, "quiet")
+	level6.Json, _ = maps.Bool(flags, level6.Json, "json")
+	level6.Summarize, _ = maps.Bool(flags, level6.Summarize, "summarize")
+	if ok, _ := maps.Bool(flags, false, "verbose"); ok {
 		level6.Logger.Severity = log.Debug
 	}
 
 	// parse excludes
-	if e, err := maps.String(&flags, "", "excludes"); err == nil {
+	if e, err := maps.String(flags, "", "excludes"); err == nil {
 		level6.Excludes = append(level6.Excludes, strings.Split(strings.ToLower(e), ",")...)
 	}
 
 	// profiling
-	if profile, _ := maps.String(&flags, "", "profile"); profile != "" {
+	if profile, _ := maps.String(flags, "", "profile"); profile != "" {
 		f, _ := os.Create(profile)
 		pprof.StartCPUProfile(f)
 		defer pprof.StopCPUProfile()
