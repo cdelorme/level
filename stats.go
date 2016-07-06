@@ -2,7 +2,7 @@ package level6
 
 import "time"
 
-type Summary struct {
+type stats struct {
 	Files        int64
 	Crc32Hashes  int64
 	Sha256Hashes int64
@@ -11,4 +11,8 @@ type Summary struct {
 	Deletes      int64
 	Start        time.Time
 	Time         time.Duration
+}
+
+func (self *stats) summary() {
+	printf("%#v\n", self)
 }

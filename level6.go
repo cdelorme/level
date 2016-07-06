@@ -3,6 +3,7 @@ package level6
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"hash/crc32"
 	"io/ioutil"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"sync"
 )
+
+var printf = fmt.Printf
 
 type logger interface {
 	Debug(string, ...interface{})
@@ -29,65 +32,60 @@ func exists(path string) (bool, error) {
 }
 
 type Level6 struct {
-	Summary
-	MaxParallelism int
-	Logger         logger
-	Path           string
-	Delete         bool
-	Move           string
-	Summarize      bool
-	MaxSize        int64
-	Excludes       []string
-	Files          map[int64][]File
-	Duplicates     map[string][]File
+	stats
+	Logger logger
+
+	Input    string `json:"input,omitempty"`
+	Move     string `json:"move,omitempty"`
+	Test     bool   `json:"test,omitempty"`
+	Excludes string `json:"excludes,omitempty"`
+
+	excludes   []string
+	files      map[int64][]file
+	duplicates map[string][]file
 }
 
-func (level6 *Level6) Walk(path string, file os.FileInfo, err error) error {
-	if file != nil && file.Mode().IsRegular() {
-		f := File{Size: file.Size(), Path: path}
-		level6.Summary.Files = level6.Summary.Files + 1
+func (self *Level6) walk(path string, f os.FileInfo, err error) error {
+	if f != nil && f.Mode().IsRegular() {
+		fi := file{Size: f.Size(), Path: path}
 
-		if level6.MaxSize > 0 && f.Size >= level6.MaxSize {
-			return err
-		}
-
-		for i, _ := range level6.Excludes {
-			if strings.Contains(strings.ToLower(path), level6.Excludes[i]) {
+		for i, _ := range self.excludes {
+			if strings.Contains(strings.ToLower(path), self.excludes[i]) {
 				return err
 			}
 		}
 
-		if _, ok := level6.Files[f.Size]; !ok {
-			level6.Files[f.Size] = make([]File, 0)
+		if _, ok := self.files[fi.Size]; !ok {
+			self.files[fi.Size] = make([]file, 0)
 		}
-		level6.Files[f.Size] = append(level6.Files[f.Size], f)
+		self.files[fi.Size] = append(self.files[fi.Size], fi)
+		self.stats.Files++
 	}
 	return err
 }
 
-func (level6 *Level6) HashAndCompare() {
+func (self *Level6) compare() (err error) {
 	crc32Sizes := make(chan int64)
 	crc32Hashes := make(chan int64)
 	var crc32Hashing sync.WaitGroup
 	var crc32HashCount sync.WaitGroup
 
-	crc32Hashing.Add(level6.MaxParallelism)
-	for i := 0; i < level6.MaxParallelism; i++ {
+	crc32Hashing.Add(8)
+	for i := 0; i < 8; i++ {
 		go func(num int) {
 			defer crc32Hashing.Done()
 			hash := crc32.New(nil)
 
 			for size := range crc32Sizes {
-				level6.Logger.Debug("channel %d, for file size %d", num, size)
-				for i, _ := range level6.Files[size] {
-					content, err := ioutil.ReadFile(level6.Files[size][i].Path)
+				for i, _ := range self.files[size] {
+					content, err := ioutil.ReadFile(self.files[size][i].Path)
 					if err != nil {
-						level6.Logger.Error("failed to parse file %s, %s", level6.Files[size][i].Path, err)
+						self.Logger.Error("failed to parse file %s, %s", self.files[size][i].Path, err)
 						continue
 					}
 
 					hash.Write(content)
-					level6.Files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
+					self.files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
 					hash.Reset()
 					crc32Hashes <- 1
 				}
@@ -99,12 +97,12 @@ func (level6 *Level6) HashAndCompare() {
 	go func() {
 		defer crc32HashCount.Done()
 		for _ = range crc32Hashes {
-			level6.Summary.Crc32Hashes = level6.Summary.Crc32Hashes + 1
+			self.stats.Crc32Hashes++
 		}
 	}()
 
-	for size, _ := range level6.Files {
-		if len(level6.Files[size]) > 1 {
+	for size, _ := range self.files {
+		if len(self.files[size]) > 1 {
 			crc32Sizes <- size
 		}
 	}
@@ -116,35 +114,33 @@ func (level6 *Level6) HashAndCompare() {
 
 	sizes := make(chan int64)
 	var comparison sync.WaitGroup
-	duplicates := make(chan map[string][]File)
+	duplicates := make(chan map[string][]file)
 
 	sha256Hashes := make(chan int64)
-	sha256Duplicates := make(chan int64)
 	var sha256Counting sync.WaitGroup
-	var sha256DuplicateCounting sync.WaitGroup
 
-	comparison.Add(level6.MaxParallelism)
-	for i := 0; i < level6.MaxParallelism; i++ {
+	comparison.Add(8)
+	for i := 0; i < 8; i++ {
 		go func() {
 			defer comparison.Done()
 			hash := sha256.New()
 
 			for size := range sizes {
-				crc32Dups := make(map[string][]File)
-				sha256Dups := make(map[string][]File)
+				crc32Dups := make(map[string][]file)
+				sha256Dups := make(map[string][]file)
 
-				for i, _ := range level6.Files[size] {
-					if _, ok := crc32Dups[level6.Files[size][i].Hash]; !ok {
-						crc32Dups[level6.Files[size][i].Hash] = make([]File, 0)
+				for i, _ := range self.files[size] {
+					if _, ok := crc32Dups[self.files[size][i].Hash]; !ok {
+						crc32Dups[self.files[size][i].Hash] = make([]file, 0)
 
-						for d := i + 1; d < len(level6.Files[size]); d++ {
-							if level6.Files[size][i].Hash == level6.Files[size][d].Hash {
-								crc32Dups[level6.Files[size][i].Hash] = append(crc32Dups[level6.Files[size][i].Hash], level6.Files[size][d])
+						for d := i + 1; d < len(self.files[size]); d++ {
+							if self.files[size][i].Hash == self.files[size][d].Hash {
+								crc32Dups[self.files[size][i].Hash] = append(crc32Dups[self.files[size][i].Hash], self.files[size][d])
 							}
 						}
 
-						if len(crc32Dups[level6.Files[size][i].Hash]) > 0 {
-							crc32Dups[level6.Files[size][i].Hash] = append(crc32Dups[level6.Files[size][i].Hash], level6.Files[size][i])
+						if len(crc32Dups[self.files[size][i].Hash]) > 0 {
+							crc32Dups[self.files[size][i].Hash] = append(crc32Dups[self.files[size][i].Hash], self.files[size][i])
 						}
 					}
 				}
@@ -164,7 +160,7 @@ func (level6 *Level6) HashAndCompare() {
 				for h, _ := range crc32Dups {
 					for i, _ := range crc32Dups[h] {
 						if _, ok := sha256Dups[h]; !ok {
-							sha256Dups[h] = make([]File, 0)
+							sha256Dups[h] = make([]file, 0)
 
 							for f := i + 1; f < len(crc32Dups[h]); f++ {
 
@@ -191,28 +187,38 @@ func (level6 *Level6) HashAndCompare() {
 	go func() {
 		defer sha256Counting.Done()
 		for _ = range sha256Hashes {
-			level6.Summary.Sha256Hashes = level6.Summary.Sha256Hashes + 1
+			self.stats.Sha256Hashes++
 		}
 	}()
 
+	sha256Duplicates := make(chan int64)
+	var sha256DuplicateCounting sync.WaitGroup
 	sha256DuplicateCounting.Add(1)
 	go func() {
 		defer sha256DuplicateCounting.Done()
 		for dups := range duplicates {
 			for hash, files := range dups {
 				if len(dups[hash]) > 0 {
-					if _, ok := level6.Duplicates[hash]; !ok {
-						level6.Duplicates[hash] = make([]File, 0)
+					if _, ok := self.duplicates[hash]; !ok {
+						self.duplicates[hash] = make([]file, 0)
 					}
-					level6.Duplicates[hash] = append(level6.Duplicates[hash], files...)
-					level6.Summary.Duplicates = level6.Summary.Duplicates + int64(len(dups[hash]))
+					self.duplicates[hash] = append(self.duplicates[hash], files...)
+					sha256Duplicates <- int64(len(dups[hash]))
 				}
 			}
 		}
 	}()
 
-	for size, _ := range level6.Files {
-		if len(level6.Files[size]) > 1 {
+	sha256DuplicateCounting.Add(1)
+	go func() {
+		defer sha256DuplicateCounting.Done()
+		for v := range sha256Duplicates {
+			self.stats.Duplicates += v
+		}
+	}()
+
+	for size, _ := range self.files {
+		if len(self.files[size]) > 1 {
 			sizes <- size
 		}
 	}
@@ -224,14 +230,15 @@ func (level6 *Level6) HashAndCompare() {
 	close(duplicates)
 	sha256Counting.Wait()
 	sha256DuplicateCounting.Wait()
+	return
 }
 
-func (level6 *Level6) Finish() {
-	if level6.Move != "" {
-		if ok, _ := exists(level6.Move); !ok {
-			err := os.MkdirAll(level6.Move, 0740)
+func (self *Level6) finish() (err error) {
+	if len(self.Move) > 0 {
+		if ok, _ := exists(self.Move); !ok {
+			err := os.MkdirAll(self.Move, 0740)
 			if err != nil {
-				level6.Logger.Error("Failed to make dir files, %s", err)
+				self.Logger.Error("Failed to make dir files, %s", err)
 			}
 		}
 
@@ -240,18 +247,22 @@ func (level6 *Level6) Finish() {
 		moves := make(chan int64)
 		var moveCount sync.WaitGroup
 
-		moving.Add(level6.MaxParallelism)
-		for i := 0; i < level6.MaxParallelism; i++ {
+		moving.Add(8)
+		for i := 0; i < 8; i++ {
 			go func() {
 				defer moving.Done()
 				for hash := range hashes {
-					for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-						mv := filepath.Join(level6.Move, strings.TrimPrefix(level6.Duplicates[hash][i].Path, level6.Path))
-						if err := os.MkdirAll(filepath.Dir(mv), 0740); err != nil {
-							level6.Logger.Error("failed to create containing folder %s", filepath.Dir(mv))
-						}
-						if err := os.Rename(level6.Duplicates[hash][i].Path, mv); err != nil {
-							level6.Logger.Error("failed to move %s to %s, %s", level6.Duplicates[hash][i].Path, mv, err)
+					for i := 0; i < len(self.duplicates[hash])-1; i++ {
+						mv := filepath.Join(self.Move, strings.TrimPrefix(self.duplicates[hash][i].Path, self.Input))
+						if self.Test {
+							printf("moving %s\n", mv)
+						} else {
+							if err := os.MkdirAll(filepath.Dir(mv), 0740); err != nil {
+								self.Logger.Error("failed to create containing folder %s", filepath.Dir(mv))
+							}
+							if err := os.Rename(self.duplicates[hash][i].Path, mv); err != nil {
+								self.Logger.Error("failed to move %s to %s, %s", self.duplicates[hash][i].Path, mv, err)
+							}
 						}
 						moves <- 1
 					}
@@ -263,11 +274,10 @@ func (level6 *Level6) Finish() {
 		go func() {
 			defer moveCount.Done()
 			for _ = range moves {
-				level6.Summary.Moves = level6.Summary.Moves + 1
 			}
 		}()
 
-		for hash, _ := range level6.Duplicates {
+		for hash, _ := range self.duplicates {
 			hashes <- hash
 		}
 
@@ -276,21 +286,26 @@ func (level6 *Level6) Finish() {
 		close(moves)
 		moveCount.Wait()
 
-	} else if level6.Delete {
+	} else {
 		hashes := make(chan string)
 		var deleting sync.WaitGroup
 		deletes := make(chan int64)
 		var deleteCount sync.WaitGroup
 
-		deleting.Add(level6.MaxParallelism)
-		for i := 0; i < level6.MaxParallelism; i++ {
+		deleting.Add(8)
+		for i := 0; i < 8; i++ {
 			go func() {
 				defer deleting.Done()
 				for hash := range hashes {
-					for i := 0; i < len(level6.Duplicates[hash])-1; i++ {
-						err := os.Remove(level6.Duplicates[hash][i].Path)
-						if err != nil {
-							level6.Logger.Error("failed to delete file: %s, %s", level6.Duplicates[hash][i].Path, err)
+					for i := 0; i < len(self.duplicates[hash])-1; i++ {
+						if self.Test {
+							printf("deleting %s\n", self.duplicates[hash][i].Path)
+						} else {
+							err := os.Remove(self.duplicates[hash][i].Path)
+							if err != nil {
+								self.Logger.Error("failed to delete file: %s, %s", self.duplicates[hash][i].Path, err)
+							}
+
 						}
 						deletes <- 1
 					}
@@ -302,11 +317,10 @@ func (level6 *Level6) Finish() {
 		go func() {
 			defer deleteCount.Done()
 			for _ = range deletes {
-				level6.Summary.Deletes = level6.Summary.Deletes + 1
 			}
 		}()
 
-		for hash, _ := range level6.Duplicates {
+		for hash, _ := range self.duplicates {
 			hashes <- hash
 		}
 
@@ -315,4 +329,43 @@ func (level6 *Level6) Finish() {
 		close(deletes)
 		deleteCount.Wait()
 	}
+	return
+}
+
+func (self *Level6) Execute() error {
+	self.Input, _ = filepath.Abs(filepath.Clean(self.Input))
+	self.excludes = append([]string{"/."}, strings.Split(self.Excludes, ",")...)
+	self.files = make(map[int64][]file)
+	self.duplicates = make(map[string][]file)
+	if len(self.Move) > 0 {
+		self.Move, _ = filepath.Abs(filepath.Clean(self.Move))
+		self.excludes = append(self.excludes, self.Move)
+	}
+	for i := range self.excludes {
+		if len(self.excludes[i]) == 0 {
+			self.excludes = append(self.excludes[:i], self.excludes[i+1:]...)
+		}
+	}
+	self.Logger.Debug("initial state: %#v", self)
+
+	if err := filepath.Walk(self.Input, self.walk); err != nil {
+		self.Logger.Error("failed to walk directory: %s", err)
+		return err
+	}
+
+	if err := self.compare(); err != nil {
+		self.Logger.Error("%s\n", err)
+		return err
+	}
+
+	self.stats.summary()
+
+	// temporary for testing
+	return nil
+
+	if err := self.finish(); err != nil {
+		return nil
+	}
+
+	return nil
 }

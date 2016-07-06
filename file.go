@@ -1,6 +1,6 @@
 package level6
 
-type File struct {
+type file struct {
 	Path string
 	Hash string
 	Size int64
