@@ -1,4 +1,3 @@
-.gitignore
 .DS_Store
-go/*
-level6
+cmd/level6/level6
+
