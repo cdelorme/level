@@ -1,6 +1,0 @@
-#!/bin/bash
-rm -rf go level6
-export GOPATH=$(pwd)/go
-go get &> /dev/null
-go get -u all &> /dev/null
-go build
