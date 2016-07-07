@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"testing"
 
@@ -9,6 +10,10 @@ import (
 
 func init() {
 	exit = func(_ int) {}
+	create = func(_ string) (*os.File, error) { return nil, nil }
+	startp = func(_ io.Writer) error { return nil }
+	stopp = func() {}
+	println = func(_ ...interface{}) (int, error) { return 0, nil }
 }
 
 func TestPlacebo(_ *testing.T) {}

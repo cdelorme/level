@@ -1,9 +1,12 @@
 package level6
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
+
+var sprintf = fmt.Sprintf
 
 type stats struct {
 	sync.RWMutex
@@ -24,11 +27,13 @@ func (self *stats) append(key string, value int64) {
 	self.fields[key] += value
 }
 
-func (self *stats) summary() {
+func (self *stats) Summary() string {
 	self.RLock()
 	defer self.RUnlock()
+	var response string
 	for k, v := range self.fields {
-		printf("%s: %d\n", k, v)
+		response += sprintf("%s: %d\n", k, v)
 	}
-	printf("Total Execution Time: %s\n", time.Since(self.start).String())
+	response += sprintf("Total Execution Time: %s", time.Since(self.start))
+	return response
 }

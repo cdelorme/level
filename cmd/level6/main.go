@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"runtime/pprof"
 
@@ -12,9 +13,14 @@ import (
 )
 
 var exit = os.Exit
+var create = os.Create
+var startp = pprof.StartCPUProfile
+var stopp = pprof.StopCPUProfile
+var println = fmt.Println
 
 type executor interface {
 	Execute() error
+	Summary() string
 }
 
 func configure() executor {
@@ -42,14 +48,15 @@ func configure() executor {
 
 func main() {
 	if profile := os.Getenv("GO_PROFILE"); len(profile) > 0 {
-		f, _ := os.Create(profile)
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
+		f, _ := create(profile)
+		startp(f)
+		defer stopp()
 	}
 
 	l6 := configure()
-
-	if e := l6.Execute(); e != nil {
+	e := l6.Execute()
+	println(l6.Summary())
+	if e != nil {
 		exit(1)
 	}
 }

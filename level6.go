@@ -3,7 +3,6 @@ package level6
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"hash/crc32"
 	"io"
 	"os"
@@ -11,8 +10,6 @@ import (
 	"strings"
 	"sync"
 )
-
-var printf = fmt.Printf
 
 type logger interface {
 	Debug(string, ...interface{})
@@ -87,7 +84,7 @@ func (self *Level6) walk(path string, f os.FileInfo, err error) error {
 			self.files[fi.Size] = make([]file, 0)
 		}
 		self.files[fi.Size] = append(self.files[fi.Size], fi)
-		self.stats.append("Files Processed", 1)
+		self.append("Files Processed", 1)
 	}
 	return err
 }
@@ -119,7 +116,7 @@ func (self *Level6) compare() error {
 					}
 					in.Close()
 					self.files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
-					self.stats.append("CRC32 Hashes Created", 1)
+					self.append("CRC32 Hashes Created", 1)
 					hash.Reset()
 				}
 			}
@@ -180,7 +177,7 @@ func (self *Level6) compare() error {
 						}
 						in.Close()
 						crc32Dups[i][f].Hash = hex.EncodeToString(hash.Sum(nil))
-						self.stats.append("SHA256 Hashes Created", 1)
+						self.append("SHA256 Hashes Created", 1)
 						hash.Reset()
 					}
 				}
@@ -222,7 +219,7 @@ func (self *Level6) compare() error {
 						self.duplicates[hash] = make([]file, 0)
 					}
 					self.duplicates[hash] = append(self.duplicates[hash], files...)
-					self.stats.append("Duplicates Found", int64(len(dups[hash])-1))
+					self.append("Duplicates Found", int64(len(dups[hash])-1))
 				}
 			}
 		}
@@ -265,12 +262,12 @@ func (self *Level6) move() error {
 				for i := 0; i < len(self.duplicates[hash])-1; i++ {
 					mv := filepath.Join(self.Move, strings.TrimPrefix(self.duplicates[hash][i].Path, self.Input))
 					if self.Test {
-						printf("moving %s\n", mv)
+						self.Logger.Info("moving %s\n", mv)
 					} else if e := self.copy(self.duplicates[hash][i].Path, mv); e != nil {
 						self.Logger.Error("failed to move %s to %s, %s", self.duplicates[hash][i].Path, mv, e)
 						self.error(e)
 					} else {
-						self.stats.append("Files Moved", 1)
+						self.append("Files Moved", 1)
 					}
 				}
 			}
@@ -297,13 +294,13 @@ func (self *Level6) delete() error {
 			for hash := range hashes {
 				for i := 0; i < len(self.duplicates[hash])-1; i++ {
 					if self.Test {
-						printf("deleting %s\n", self.duplicates[hash][i].Path)
+						self.Logger.Info("deleting %s\n", self.duplicates[hash][i].Path)
 					} else {
 						if e := os.Remove(self.duplicates[hash][i].Path); e != nil {
 							self.Logger.Error("failed to delete file: %s, %s", self.duplicates[hash][i].Path, e)
 							self.error(e)
 						} else {
-							self.stats.append("Deleted Files", 1)
+							self.append("Deleted Files", 1)
 						}
 					}
 				}
@@ -321,7 +318,7 @@ func (self *Level6) delete() error {
 }
 
 func (self *Level6) Execute() error {
-	self.stats.init()
+	self.init()
 	self.Input, _ = filepath.Abs(filepath.Clean(self.Input))
 	self.excludes = append([]string{"/."}, strings.Split(self.Excludes, ",")...)
 	self.files = make(map[int64][]file)
@@ -349,16 +346,7 @@ func (self *Level6) Execute() error {
 	}
 
 	if len(self.Move) > 0 {
-		if err := self.move(); err != nil {
-			self.error(err)
-		}
-	} else {
-		if err := self.delete(); err != nil {
-			self.error(err)
-		}
+		return self.move()
 	}
-
-	self.stats.summary()
-
-	return self.err
+	return self.delete()
 }
