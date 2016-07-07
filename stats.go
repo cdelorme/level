@@ -1,18 +1,34 @@
 package level6
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type stats struct {
-	Files        int64
-	Crc32Hashes  int64
-	Sha256Hashes int64
-	Duplicates   int64
-	Moves        int64
-	Deletes      int64
-	Start        time.Time
-	Time         time.Duration
+	sync.RWMutex
+	start  time.Time
+	fields map[string]int64
+}
+
+func (self *stats) init() {
+	self.Lock()
+	defer self.Unlock()
+	self.start = time.Now()
+	self.fields = make(map[string]int64)
+}
+
+func (self *stats) append(key string, value int64) {
+	self.Lock()
+	defer self.Unlock()
+	self.fields[key] += value
 }
 
 func (self *stats) summary() {
-	printf("%#v\n", self)
+	self.RLock()
+	defer self.RUnlock()
+	for k, v := range self.fields {
+		printf("%s: %d\n", k, v)
+	}
+	printf("Total Execution Time: %s\n", time.Since(self.start).String())
 }
