@@ -51,7 +51,6 @@ _This will download the library and build all `cmd/` implementations._
 
 ## future
 
-- relocate test output to logger so output is separated from the summary
 - correctly detect read-only permissions and fail on `move()`
 - create package-level global functions for common library functionality
 - byte-by-byte comparison as final data-check after sha256
