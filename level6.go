@@ -110,13 +110,14 @@ func (self *Level6) compare() error {
 						self.error(e)
 						continue
 					}
-					defer in.Close()
 
 					if _, err := io.Copy(hash, in); err != nil {
 						self.Logger.Error("failed to hash file %s, %s", self.files[size][i].Path, err)
 						self.error(err)
+						in.Close()
 						continue
 					}
+					in.Close()
 					self.files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
 					self.stats.append("CRC32 Hashes Created", 1)
 					hash.Reset()
@@ -170,13 +171,14 @@ func (self *Level6) compare() error {
 							self.error(e)
 							continue
 						}
-						defer in.Close()
 
 						if _, err := io.Copy(hash, in); err != nil {
 							self.Logger.Error("failed to hash file %s, %s", crc32Dups[i][f].Path, err)
 							self.error(err)
+							in.Close()
 							continue
 						}
+						in.Close()
 						crc32Dups[i][f].Hash = hex.EncodeToString(hash.Sum(nil))
 						self.stats.append("SHA256 Hashes Created", 1)
 						hash.Reset()
@@ -328,9 +330,10 @@ func (self *Level6) Execute() error {
 		self.Move, _ = filepath.Abs(filepath.Clean(self.Move))
 		self.excludes = append(self.excludes, self.Move)
 	}
-	for i := range self.excludes {
+	for i := 0; i < len(self.excludes); i++ {
 		if len(self.excludes[i]) == 0 {
 			self.excludes = append(self.excludes[:i], self.excludes[i+1:]...)
+			i--
 		}
 	}
 	self.Logger.Debug("initial state: %#v", self)
