@@ -1,125 +1,74 @@
 
 # level6
 
-A cross platform, FOSS, file deduplication software for command line.
+A cross platform, FOSS, file deduplication software library.
 
-_Title inspired by To Aru Kagaku no Railgun and dark humor._
-
-
-# alternatives
-
-There is plenty of software that provides file deduplication, as well as modern file systems that have such features built-in.
-
-However, almost no decent file deduplication utilities are both cross-platform and free.
-
-A linux/unix builtin command `hardlink` may do a similar job of finding files with the same data, but it does not eliminate the duplicate content, rather it maps both file references to the same data, reducing consumed disk space but not the number of "files".
+**_Title inspired by the Japanese anime "Toaru Kagaku no Railgun"._**
 
 
-## sales pitch
+## design
 
-As with anything I write, my aim is to provide the simplest implementation that works cleanly.
-
-Reasons to use it:
-
-- fast
-- cross-platform
-- free
-- works from the command line
-- finds duplicates and lists them
-- can also move, or delete duplicates
-
-Reasons to use it:
-
-- it doesn't contain mounds of unit tests
-- it doesn't carry heavy abstraction layers or complexity
-- it's less than 600 lines of code
-
-_While the program will build cross platform, Windows may have difficulty with the file walk, and also resource exhaustion forcing the OS to kill the program.  For windows please supply a feasible max size argument to alleviate resource consumption._
-
-
-## application behavior
-
-Switches:
-
-- `path` is optional (uses pwd|cwd otherwise)
-- `delete`
-- `move` overrides `delete`
-- `excludes`
-- `quiet` overrides `verbose` and expects `delete` or `move`
-- `max-size` of files to hash in kilobytes
-- `json` to print pretty or for sharing with another application
-- `summary` to print summary data at end of execution
-- `verbose` debug output
-- `profile` produce a cpu profile file for `go test pprof`
-
-The applications default behavior is to simply print out the duplicates to stdout.  Supplying the `json` flag will print the results as a json array.
-
-It will exit if `quiet` is set, but neither `delete` nor `move` are assigned.
-
-The `excludes` are a case-insensative dual-sided wildcard path-contains check that will ignore any files containing the supplied text(s).  Supplying multiple paths to ignore?  Just add a comma.  **By default it ignores any files that begin with a period by checking for `/.`.**
-
-If no `path` has been supplied, it will use the current working directory.
-
-It moves files after scanning and building hashes, which means your `move` folder can be inside `path`.
-
-When `move` is selected, it will only move all but the first into the `move` path.
-
-When `delete` is selected, it will remove all but the first identified instance.
-
-To reduce load on the system you can specify a maximum size to build hashes, anything above that size will be ignored when hashing and comparing.
-
-The `summary` option ignores `quiet`, and will print to json when `json` is set.
-
-_Dot files are still included in the file total in the summary, but are not added to the files list nor is a hash generated or duplication processed on them._
-
-
-### usage
-
-To list duplicates in a given path:
-
-    level6 -p /path/to/dedup/
-
-To silently move files:
-
-    level6 -q -m /path/to/temp/dir/
-
-To silently delete files:
-
-    level6 -q -d
-
-For additional options:
-
-    level6 -h
-
-
-## building & installing
-
-You can install with `go get github.com/cdelorme/level6`.
-
-If you want to test it you can clone the repository and run `go get` and `go build`.  For convenience on osx or linux the `build` bash script will create a local gopath to test build in-place without affecting anything else on your system.
-
-
-## hash comparison
-
-To increase performnce, this project will generate crc32 hashes first, and only run sha256 against duplicates among the crc32 hashes.  This should greatly reduce processing time.
-
-This project uses sha256 hashing to ensure unique file data, allowing you to make the decision to delete or move files with confidence.  To further reduce possible conflicts, it only compares hashes of files of equal size.
+This project is designed to scan files in a supplied folder, group by size, then apply layers of hashing to identify duplicates efficiently and in parallel.  It automatically excludes files and folders that begin with a period (_including files within folders that begin with a period_), as these are considered "hidden files".
 
 [![sha256 is preferred](http://i.stack.imgur.com/46Vwb.jpg)](http://crypto.stackexchange.com/questions/1170/best-way-to-reduce-chance-of-hash-collisions-multiple-hashes-or-larger-hash)
 
+The hashing is optimized by running crc32 before sha256 to reduce the number of sha256 hashes needed.  All hashing is buffered reducing the footprint to 32kb per parallel process according to the `io.Copy()` default buffer size.  _This buffer should alleviate problems with resource exhaustion when run on a Windows machine._
 
-## future plans
+Once duplicates have been assembled the settings are used to either print the results, move, or delete files.  In the process of moving files we attempt to create the parent directories, and we try `os.Rename` followed by `io.Copy` as a fallback (necessary if moving files to another disk).  _Currently this leads to problems if the files are read-only, where we may create a **new duplicate** in the supplied move path and be unable to delete the original._
 
-- create a gui interface wrapper for the cli
-- optional high-fidelity flag for full-binary comparison
-    - optionally performed on any sha256 matches
-    - can also set max-size to a sane default, and run full-binary for files above that size limit
-- implement complex image, video, and audio comparison algorithms with support for things like
-    - partial image, video, or audio clips (including images from video)
-    - images that have been:
-        - scaled
-        - rotated
-        - cropped
-        - discolored
+A summary will be printed including execution time, and stats collected during execution.
 
-_Some ideas for comparison include keypoint detection and decision trees, but I'll have to do a bit of research before I'm ready to take the code to the next level._
+All errors will be logged, but only the latest error will be returned to the executor.
+
+
+## problems
+
+This project is still an early-draft and was originally written as a proof-of-concept leveraging channel-based-concurrency.
+
+The original did not use buffers and loaded whole files into memory, which became a problem when dealing with very large files such as VM images, and would get killed by Windows resource manager due to "Resource Exhaustion".
+
+_While this has been addressed with buffers, it may still be incorrect to leverage parallel processing against the disk which is a slower component._  I plan to optimize and benchmark to find a happy balance.
+
+The code is subject to race-conditions as no protection is used when dealing with maps.  In particular the code is written to write to maps synchronously, but read in parallel.  This is a dangerous game, _but was a decision to optimize to avoid more complexity with passing large amounts of data around or adding many more channels._
+
+There are other "bugs" in the code, specifically the lack of duplicate grouping and cleanup.  This means if two folders exist the item deleted or moved may come from a mixture of the two, and if any folders are left empty we do not cleanup the folder afterwards.  _These I intend to address in future iterations._
+
+Finally because only one function is exposed its purpose as a "Library" is rather limited in scope (which was not the intention).
+
+
+## usage
+
+Import the library:
+
+    import "github.com/cdelorme/level6"
+
+Installation process:
+
+    go get github.com/cdelorme/level6/...
+
+_This will download the library and build all `cmd/` implementations._
+
+
+## future
+
+- relocate test output to logger so output is separated from the summary
+- correctly detect read-only permissions and fail on `move()`
+- create package-level global functions for common library functionality
+- byte-by-byte comparison as final data-check after sha256
+- add logic for duplicates to be grouped by path so we can correctly delete matching sets
+- add logic to check post-remove for an empty parent folder to cleanup after our process
+- add comprehensive unit tests
+- optimize concurrent processing and management
+- add file-type and categorization component
+    - to capture text, audio, video, and image files
+- add content comparison for text files
+    - _partial matches can be printed but not augmented_
+- add visual comparison functions
+    - _should be compatible with video files_
+    - go-native support for running scaled, cropped, rotated, discolored, in-motion comparisons would be ideal
+- add audible comparison functions
+    - _this is a completely new field for me, so I have no clue where to start_
+
+_At a low level I understand that keypoint detection and decision-trees are used in image comparison, but afaik none of these exist yet as native go features._
+
+Choosing sane defaults and adding flags to enable, disable, and augment behavior when doing the more touchy duplicate-check logic would be good to consider at the cli level.
