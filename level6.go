@@ -222,7 +222,7 @@ func (self *Level6) compare() error {
 						self.duplicates[hash] = make([]file, 0)
 					}
 					self.duplicates[hash] = append(self.duplicates[hash], files...)
-					self.stats.append("Duplicates Found", int64(len(dups[hash])))
+					self.stats.append("Duplicates Found", int64(len(dups[hash])-1))
 				}
 			}
 		}
@@ -348,10 +348,17 @@ func (self *Level6) Execute() error {
 		return err
 	}
 
+	if len(self.Move) > 0 {
+		if err := self.move(); err != nil {
+			self.error(err)
+		}
+	} else {
+		if err := self.delete(); err != nil {
+			self.error(err)
+		}
+	}
+
 	self.stats.summary()
 
-	if len(self.Move) > 0 {
-		return self.move()
-	}
-	return self.delete()
+	return self.err
 }
