@@ -1,39 +1,22 @@
 package level6
 
-import (
-	"fmt"
-	"sync"
-	"time"
+const (
+	StatsFiles      = "Total Files"
+	StatsHashCrc32  = "Hashes Created (crc32)"
+	StatsHashSha256 = "Hashes Created (sha256)"
+	StatsDuplicates = "Duplicates Found"
+	StatsDeleted    = "Moved Files"
+	StatsMoved      = "Deleted Files"
 )
 
-var sprintf = fmt.Sprintf
-
-type stats struct {
-	sync.RWMutex
-	start  time.Time
-	fields map[string]int64
+type statCollector interface {
+	Stats(stats)
 }
 
-func (self *stats) init() {
-	self.Lock()
-	defer self.Unlock()
-	self.start = time.Now()
-	self.fields = make(map[string]int64)
+type stats interface {
+	Add(string, int)
 }
 
-func (self *stats) append(key string, value int64) {
-	self.Lock()
-	defer self.Unlock()
-	self.fields[key] += value
-}
+type nilStats struct{}
 
-func (self *stats) Summary() string {
-	self.RLock()
-	defer self.RUnlock()
-	var response string
-	for k, v := range self.fields {
-		response += sprintf("%s: %d\n", k, v)
-	}
-	response += sprintf("Total Execution Time: %s", time.Since(self.start))
-	return response
-}
+func (self *nilStats) Add(_ string, _ int) {}

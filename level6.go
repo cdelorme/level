@@ -1,48 +1,38 @@
 package level6
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"hash/crc32"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
-type logger interface {
-	Debug(string, ...interface{})
-	Error(string, ...interface{})
-	Info(string, ...interface{})
-}
-
 type Level6 struct {
-	stats
-	sync.Mutex
-	Logger logger
+	Logger logger `json:"-"`
+	Stats  stats  `json:"-"`
 
-	Input    string `json:"input,omitempty"`
 	Move     string `json:"move,omitempty"`
 	Test     bool   `json:"test,omitempty"`
+	Input    string `json:"input,omitempty"`
 	Excludes string `json:"excludes,omitempty"`
 
 	err        error
+	step       int
+	steps      []step
 	excludes   []string
-	files      map[int64][]file
-	duplicates map[string][]file
+	duplicates [][]string
 }
 
-func (self *Level6) copy(in, out string) error {
+func copy(in, out string) error {
 	if e := os.MkdirAll(filepath.Dir(out), 0740); e != nil {
 		return e
 	} else if e := os.Rename(in, out); e != nil {
-		i, ierr := os.Open(in)
+		i, ierr := os.OpenFile(in, os.O_RDWR, 0777)
 		if ierr != nil {
 			return ierr
 		}
 		defer i.Close()
-		o, oerr := os.Open(out)
+		o, oerr := os.OpenFile(out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0777)
 		if oerr != nil {
 			return oerr
 		}
@@ -59,7 +49,7 @@ func (self *Level6) copy(in, out string) error {
 	return nil
 }
 
-func (self *Level6) exists(path string) (bool, error) {
+func exists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
 		return true, nil
@@ -72,257 +62,68 @@ func (self *Level6) exists(path string) (bool, error) {
 
 func (self *Level6) walk(path string, f os.FileInfo, err error) error {
 	if f != nil && f.Mode().IsRegular() {
-		fi := file{Size: f.Size(), Path: path}
-
 		for i, _ := range self.excludes {
 			if strings.Contains(strings.ToLower(path), self.excludes[i]) {
 				return err
 			}
 		}
-
-		if _, ok := self.files[fi.Size]; !ok {
-			self.files[fi.Size] = make([]file, 0)
-		}
-		self.files[fi.Size] = append(self.files[fi.Size], fi)
-		self.append("Files Processed", 1)
+		return self.steps[self.step].Walk(path, f, err)
 	}
 	return err
 }
 
-func (self *Level6) compare() error {
-	crc32Sizes := make(chan int64)
-	var crc32Hashing sync.WaitGroup
-
-	crc32Hashing.Add(8)
-	for i := 0; i < 8; i++ {
-		go func(num int) {
-			defer crc32Hashing.Done()
-			hash := crc32.New(nil)
-
-			for size := range crc32Sizes {
-				for i, _ := range self.files[size] {
-					in, e := os.Open(self.files[size][i].Path)
-					if e != nil {
-						self.Logger.Error("failed to open file %s, %s", self.files[size][i].Path, e)
-						self.error(e)
-						continue
-					}
-
-					if _, err := io.Copy(hash, in); err != nil {
-						self.Logger.Error("failed to hash file %s, %s", self.files[size][i].Path, err)
-						self.error(err)
-						in.Close()
-						continue
-					}
-					in.Close()
-					self.files[size][i].Hash = hex.EncodeToString(hash.Sum(nil))
-					self.append("CRC32 Hashes Created", 1)
-					hash.Reset()
-				}
-			}
-		}(i)
-	}
-
-	for size, _ := range self.files {
-		if len(self.files[size]) > 1 {
-			crc32Sizes <- size
-		}
-	}
-
-	close(crc32Sizes)
-	crc32Hashing.Wait()
-	sizes := make(chan int64)
-	var comparison sync.WaitGroup
-	duplicates := make(chan map[string][]file)
-	comparison.Add(8)
-	for i := 0; i < 8; i++ {
-		go func() {
-			defer comparison.Done()
-			hash := sha256.New()
-
-			for size := range sizes {
-				crc32Dups := make(map[string][]file)
-				sha256Dups := make(map[string][]file)
-
-				for i, _ := range self.files[size] {
-					if _, ok := crc32Dups[self.files[size][i].Hash]; !ok {
-						crc32Dups[self.files[size][i].Hash] = make([]file, 0)
-
-						for d := i + 1; d < len(self.files[size]); d++ {
-							if self.files[size][i].Hash == self.files[size][d].Hash {
-								crc32Dups[self.files[size][i].Hash] = append(crc32Dups[self.files[size][i].Hash], self.files[size][d])
-							}
-						}
-
-						if len(crc32Dups[self.files[size][i].Hash]) > 0 {
-							crc32Dups[self.files[size][i].Hash] = append(crc32Dups[self.files[size][i].Hash], self.files[size][i])
-						}
-					}
-				}
-
-				for i, _ := range crc32Dups {
-					for f, _ := range crc32Dups[i] {
-						in, e := os.Open(crc32Dups[i][f].Path)
-						if e != nil {
-							self.Logger.Error("failed to open file %s, %s", crc32Dups[i][f].Path, e)
-							self.error(e)
-							continue
-						}
-
-						if _, err := io.Copy(hash, in); err != nil {
-							self.Logger.Error("failed to hash file %s, %s", crc32Dups[i][f].Path, err)
-							self.error(err)
-							in.Close()
-							continue
-						}
-						in.Close()
-						crc32Dups[i][f].Hash = hex.EncodeToString(hash.Sum(nil))
-						self.append("SHA256 Hashes Created", 1)
-						hash.Reset()
-					}
-				}
-
-				for h, _ := range crc32Dups {
-					for i, _ := range crc32Dups[h] {
-						if _, ok := sha256Dups[h]; !ok {
-							sha256Dups[h] = make([]file, 0)
-
-							for f := i + 1; f < len(crc32Dups[h]); f++ {
-
-								if crc32Dups[h][i].Hash == crc32Dups[h][f].Hash {
-									sha256Dups[h] = append(sha256Dups[h], crc32Dups[h][f])
-								}
-							}
-
-							if len(sha256Dups[h]) > 0 {
-								sha256Dups[h] = append(sha256Dups[h], crc32Dups[h][i])
-							}
-						}
-					}
-				}
-
-				if len(sha256Dups) > 0 {
-					duplicates <- sha256Dups
-				}
-			}
-		}()
-	}
-
-	var sha256DuplicateCounting sync.WaitGroup
-	sha256DuplicateCounting.Add(1)
-	go func() {
-		defer sha256DuplicateCounting.Done()
-		for dups := range duplicates {
-			for hash, files := range dups {
-				if len(dups[hash]) > 0 {
-					if _, ok := self.duplicates[hash]; !ok {
-						self.duplicates[hash] = make([]file, 0)
-					}
-					self.duplicates[hash] = append(self.duplicates[hash], files...)
-					self.append("Duplicates Found", int64(len(dups[hash])-1))
-				}
-			}
-		}
-	}()
-
-	for size, _ := range self.files {
-		if len(self.files[size]) > 1 {
-			sizes <- size
-		}
-	}
-	close(sizes)
-	comparison.Wait()
-	close(duplicates)
-	sha256DuplicateCounting.Wait()
-	return self.err
-}
-
-func (self *Level6) error(err error) {
-	self.Lock()
-	defer self.Unlock()
-	self.err = err
-}
-
-func (self *Level6) move() error {
-	if ok, _ := self.exists(self.Move); !ok {
+func (self *Level6) move() {
+	if ok, _ := exists(self.Move); !ok {
 		if e := os.MkdirAll(self.Move, 0740); e != nil {
 			self.Logger.Error("Failed to make dir files, %s", e)
-			return e
+			self.err = e
+			return
 		}
 	}
 
-	hashes := make(chan string)
-	var moving sync.WaitGroup
-
-	moving.Add(8)
-	for i := 0; i < 8; i++ {
-		go func() {
-			defer moving.Done()
-			for hash := range hashes {
-				for i := 0; i < len(self.duplicates[hash])-1; i++ {
-					mv := filepath.Join(self.Move, strings.TrimPrefix(self.duplicates[hash][i].Path, self.Input))
-					if self.Test {
-						self.Logger.Info("moving %s\n", mv)
-					} else if e := self.copy(self.duplicates[hash][i].Path, mv); e != nil {
-						self.Logger.Error("failed to move %s to %s, %s", self.duplicates[hash][i].Path, mv, e)
-						self.error(e)
-					} else {
-						self.append("Files Moved", 1)
-					}
-				}
+	for i, _ := range self.duplicates {
+		for _, v := range self.duplicates[i] {
+			mv := filepath.Join(self.Move, strings.TrimPrefix(v, self.Input))
+			if self.Test {
+				self.Logger.Info("moving %s\n", mv)
+			} else if e := copy(v, mv); e != nil {
+				self.Logger.Error("failed to move %s to %s, %s", v, mv, e)
+				self.err = e
+			} else {
+				self.Stats.Add(StatsMoved, 1)
 			}
-		}()
+		}
 	}
-
-	for hash, _ := range self.duplicates {
-		hashes <- hash
-	}
-
-	close(hashes)
-	moving.Wait()
-	return self.err
 }
 
-func (self *Level6) delete() error {
-	hashes := make(chan string)
-	var deleting sync.WaitGroup
-
-	deleting.Add(8)
-	for i := 0; i < 8; i++ {
-		go func() {
-			defer deleting.Done()
-			for hash := range hashes {
-				for i := 0; i < len(self.duplicates[hash])-1; i++ {
-					if self.Test {
-						self.Logger.Info("deleting %s\n", self.duplicates[hash][i].Path)
-					} else {
-						if e := os.Remove(self.duplicates[hash][i].Path); e != nil {
-							self.Logger.Error("failed to delete file: %s, %s", self.duplicates[hash][i].Path, e)
-							self.error(e)
-						} else {
-							self.append("Deleted Files", 1)
-						}
-					}
-				}
+func (self *Level6) delete() {
+	for i, _ := range self.duplicates {
+		for _, v := range self.duplicates[i] {
+			if self.Test {
+				self.Logger.Info("deleting %s\n", v)
+			} else if e := os.Remove(v); e != nil {
+				self.Logger.Error("failed to delete file: %s, %s", v, e)
+				self.err = e
+			} else {
+				self.Stats.Add(StatsDeleted, 1)
 			}
-		}()
+		}
 	}
+}
 
-	for hash, _ := range self.duplicates {
-		hashes <- hash
-	}
-
-	close(hashes)
-	deleting.Wait()
-	return self.err
+func (self *Level6) Step(s step) {
+	self.steps = append(self.steps, s)
 }
 
 func (self *Level6) Execute() error {
-	self.init()
+	if self.Logger == nil {
+		self.Logger = &nilLogger{}
+	}
+	if self.Stats == nil {
+		self.Stats = &nilStats{}
+	}
 	self.Input, _ = filepath.Abs(filepath.Clean(self.Input))
 	self.excludes = append([]string{"/."}, strings.Split(self.Excludes, ",")...)
-	self.files = make(map[int64][]file)
-	self.duplicates = make(map[string][]file)
 	if len(self.Move) > 0 {
 		self.Move, _ = filepath.Abs(filepath.Clean(self.Move))
 		self.excludes = append(self.excludes, self.Move)
@@ -333,20 +134,38 @@ func (self *Level6) Execute() error {
 			i--
 		}
 	}
+	if self.step == 0 {
+		self.steps = append(steps, self.steps...)
+	} else {
+		self.step = 0
+	}
 	self.Logger.Debug("initial state: %#v", self)
 
-	if err := filepath.Walk(self.Input, self.walk); err != nil {
-		self.Logger.Error("failed to walk directory: %s", err)
-		return err
+	var s step
+	for self.step, s = range steps {
+		if t, ok := s.(statCollector); ok {
+			t.Stats(self.Stats)
+		}
+		if l, ok := s.(loggable); ok {
+			l.Logger(self.Logger)
+		}
+		if err := filepath.Walk(self.Input, self.walk); err != nil {
+			self.Logger.Error("failed to walk directory: %s", err)
+			self.err = err
+			continue
+		}
+		dups, err := s.Execute()
+		if err != nil {
+			self.err = err
+		}
+		self.duplicates = append(self.duplicates, dups...)
+		if len(self.Move) > 0 {
+			self.move()
+		} else {
+			self.delete()
+		}
+		self.duplicates = [][]string{}
 	}
 
-	if err := self.compare(); err != nil {
-		self.Logger.Error("%s\n", err)
-		return err
-	}
-
-	if len(self.Move) > 0 {
-		return self.move()
-	}
-	return self.delete()
+	return self.err
 }
