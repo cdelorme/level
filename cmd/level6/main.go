@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"runtime/pprof"
 
@@ -16,18 +15,23 @@ var exit = os.Exit
 var create = os.Create
 var startp = pprof.StartCPUProfile
 var stopp = pprof.StopCPUProfile
-var println = fmt.Println
 
 type executor interface {
 	Execute() error
-	Summary() string
 }
 
-func configure() executor {
+type stats interface {
+	Summary()
+}
+
+func configure() (executor, stats) {
 	cwd, _ := os.Getwd()
+	s := &Stats{}
+	s.init()
 
 	l6 := &level6.Level6{
 		Input:  cwd,
+		Stats:  s,
 		Logger: &log.Logger{},
 	}
 
@@ -43,7 +47,7 @@ func configure() executor {
 
 	maps.To(l6, flags)
 
-	return l6
+	return l6, s
 }
 
 func main() {
@@ -53,9 +57,9 @@ func main() {
 		defer stopp()
 	}
 
-	l6 := configure()
+	l6, s := configure()
 	e := l6.Execute()
-	println(l6.Summary())
+	s.Summary()
 	if e != nil {
 		exit(1)
 	}

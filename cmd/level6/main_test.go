@@ -13,7 +13,6 @@ func init() {
 	create = func(_ string) (*os.File, error) { return nil, nil }
 	startp = func(_ io.Writer) error { return nil }
 	stopp = func() {}
-	println = func(_ ...interface{}) (int, error) { return 0, nil }
 }
 
 func TestPlacebo(_ *testing.T) {}
@@ -23,14 +22,14 @@ func TestConfigure(t *testing.T) {
 
 	// test no parameters
 	os.Args = []string{}
-	ex = configure()
+	ex, _ = configure()
 	if l, e := ex.(*level6.Level6); !e || len(l.Input) == 0 {
 		t.FailNow()
 	}
 
 	// test with valid parameters
 	os.Args = []string{"-t", "-m", "/dups", "-i", "/", "-e", "this,that"}
-	ex = configure()
+	ex, _ = configure()
 	if l, e := ex.(*level6.Level6); !e || l.Input != "/" || l.Move != "/dups" || !l.Test || l.Excludes != "this,that" {
 		t.FailNow()
 	}
