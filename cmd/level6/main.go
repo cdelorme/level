@@ -5,9 +5,7 @@ import (
 	"runtime/pprof"
 
 	"github.com/cdelorme/go-log"
-	"github.com/cdelorme/go-maps"
-	"github.com/cdelorme/go-option"
-
+	"github.com/cdelorme/gonf"
 	"github.com/cdelorme/level6"
 )
 
@@ -35,17 +33,15 @@ func configure() (executor, stats) {
 		Logger: &log.Logger{},
 	}
 
-	appOptions := option.App{Description: "file deduplication program"}
-	appOptions.Flag("input", "input path to scan", "-i", "--input")
-	appOptions.Flag("move", "move duplicates to a the given path", "-m", "--move")
-	appOptions.Flag("test", "test run do nothing but print actions", "-t", "--test")
-	appOptions.Flag("excludes", "comma-delimited patterns to exclude", "-e", "--excludes")
-	appOptions.Example("-i ~/")
-	appOptions.Example("-d -i ~/")
-	appOptions.Example("-m ~/dups -i ~/")
-	flags := appOptions.Parse()
-
-	maps.To(l6, flags)
+	g := &gonf.Gonf{Description: "file deduplication program", Configuration: l6}
+	g.Add("input", "input path to scan", "LEVEL6_INPUT", "-i", "--input")
+	g.Add("move", "move duplicates to a the given path", "LEVEL6_MOVE", "-m", "--move")
+	g.Add("test", "test run do nothing but print actions", "LEVEL6_TEST", "-t", "--test")
+	g.Add("excludes", "comma-delimited patterns to exclude", "LEVEL6_EXCLUDES", "-e", "--excludes")
+	g.Example("-i ~/")
+	g.Example("-d -i ~/")
+	g.Example("-m ~/dups -i ~/")
+	g.Load()
 
 	return l6, s
 }
