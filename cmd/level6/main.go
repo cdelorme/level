@@ -34,12 +34,11 @@ func configure() (executor, stats) {
 	}
 
 	g := &gonf.Gonf{Description: "file deduplication program", Configuration: l6}
-	g.Add("input", "input path to scan", "LEVEL6_INPUT", "-i", "--input")
-	g.Add("move", "move duplicates to a the given path", "LEVEL6_MOVE", "-m", "--move")
+	g.Add("input", "input path to scan", "LEVEL6_INPUT", "-i:", "--input")
+	g.Add("move", "move duplicates to a the given path", "LEVEL6_MOVE", "-m:", "--move")
 	g.Add("test", "test run do nothing but print actions", "LEVEL6_TEST", "-t", "--test")
-	g.Add("excludes", "comma-delimited patterns to exclude", "LEVEL6_EXCLUDES", "-e", "--excludes")
+	g.Add("excludes", "comma-delimited patterns to exclude", "LEVEL6_EXCLUDES", "-e:", "--excludes")
 	g.Example("-i ~/")
-	g.Example("-d -i ~/")
 	g.Example("-m ~/dups -i ~/")
 	g.Load()
 
