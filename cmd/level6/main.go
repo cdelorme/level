@@ -4,7 +4,7 @@ import (
 	"os"
 	"runtime/pprof"
 
-	"github.com/cdelorme/go-log"
+	"github.com/cdelorme/glog"
 	"github.com/cdelorme/gonf"
 	"github.com/cdelorme/level6"
 )
@@ -30,10 +30,10 @@ func configure() (executor, stats) {
 	l6 := &level6.Level6{
 		Input:  cwd,
 		Stats:  s,
-		Logger: &log.Logger{},
+		Logger: &glog.Logger{},
 	}
 
-	g := &gonf.Gonf{Description: "file deduplication program", Configuration: l6}
+	g := &gonf.Config{Description: "file deduplication program", Target: l6}
 	g.Add("input", "input path to scan", "LEVEL6_INPUT", "-i:", "--input")
 	g.Add("move", "move duplicates to a the given path", "LEVEL6_MOVE", "-m:", "--move")
 	g.Add("test", "test run do nothing but print actions", "LEVEL6_TEST", "-t", "--test")
