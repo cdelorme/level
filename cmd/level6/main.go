@@ -33,7 +33,9 @@ func configure() (executor, stats) {
 		Logger: &glog.Logger{},
 	}
 
-	g := &gonf.Config{Description: "file deduplication program", Target: l6}
+	g := &gonf.Config{}
+	g.Description("file deduplication program")
+	g.Target(l6)
 	g.Add("input", "input path to scan", "LEVEL6_INPUT", "-i:", "--input")
 	g.Add("move", "move duplicates to a the given path", "LEVEL6_MOVE", "-m:", "--move")
 	g.Add("test", "test run do nothing but print actions", "LEVEL6_TEST", "-t", "--test")
