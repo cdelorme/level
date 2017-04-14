@@ -6,7 +6,7 @@ import (
 
 	"github.com/cdelorme/glog"
 	"github.com/cdelorme/gonf"
-	"github.com/cdelorme/level6"
+	"github.com/cdelorme/level"
 )
 
 var exit = os.Exit
@@ -27,7 +27,7 @@ func configure() (executor, stats) {
 	s := &Stats{}
 	s.init()
 
-	l6 := &level6.Level6{
+	six := &level.Six{
 		Input:  cwd,
 		Stats:  s,
 		Logger: &glog.Logger{},
@@ -35,7 +35,7 @@ func configure() (executor, stats) {
 
 	g := &gonf.Config{}
 	g.Description("file deduplication program")
-	g.Target(l6)
+	g.Target(six)
 	g.Add("input", "input path to scan", "LEVEL6_INPUT", "-i:", "--input")
 	g.Add("move", "move duplicates to a the given path", "LEVEL6_MOVE", "-m:", "--move")
 	g.Add("test", "test run do nothing but print actions", "LEVEL6_TEST", "-t", "--test")
@@ -44,7 +44,7 @@ func configure() (executor, stats) {
 	g.Example("-m ~/dups -i ~/")
 	g.Load()
 
-	return l6, s
+	return six, s
 }
 
 func main() {
@@ -54,8 +54,8 @@ func main() {
 		defer stopp()
 	}
 
-	l6, s := configure()
-	e := l6.Execute()
+	six, s := configure()
+	e := six.Execute()
 	s.Summary()
 	if e != nil {
 		exit(1)

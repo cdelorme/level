@@ -1,5 +1,5 @@
 
-# level6
+# [level](https://github.com/cdelorme/level)
 
 A cross platform, FOSS, duplicate file detection and management software library written in the [go programming language](https://golang.org/).
 
@@ -47,11 +47,11 @@ All operations are buffered and only use 32kb per buffer, which helps us evade r
 
 Import the library:
 
-    import "github.com/cdelorme/level6"
+    import "github.com/cdelorme/level"
 
 Installation process:
 
-    go get github.com/cdelorme/level6/...
+    go get github.com/cdelorme/level/...
 
 _This will download the library and build all `cmd/` implementations._
 

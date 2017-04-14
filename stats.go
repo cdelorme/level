@@ -1,4 +1,4 @@
-package level6
+package level
 
 const (
 	StatsFiles      = "Total Files"
@@ -19,4 +19,4 @@ type stats interface {
 
 type nilStats struct{}
 
-func (self *nilStats) Add(_ string, _ int) {}
+func (n *nilStats) Add(_ string, _ int) {}

@@ -1,4 +1,4 @@
-package level6
+package level
 
 import (
 	"bufio"
@@ -98,49 +98,49 @@ type Data struct {
 	err   error
 }
 
-func (self *Data) Stats(s stats) {
-	self.stats = s
+func (d *Data) Stats(s stats) {
+	d.stats = s
 }
 
-func (self *Data) Logger(l logger) {
-	self.l = l
+func (d *Data) Logger(l logger) {
+	d.l = l
 }
 
-func (self *Data) Walk(path string, f os.FileInfo, err error) error {
-	if self.files == nil {
-		self.files = make(map[int64][]string)
+func (d *Data) Walk(path string, f os.FileInfo, err error) error {
+	if d.files == nil {
+		d.files = make(map[int64][]string)
 	}
-	if _, ok := self.files[f.Size()]; !ok {
-		self.files[f.Size()] = make([]string, 0)
+	if _, ok := d.files[f.Size()]; !ok {
+		d.files[f.Size()] = make([]string, 0)
 	}
-	self.files[f.Size()] = append(self.files[f.Size()], path)
-	self.stats.Add(StatsFiles, 1)
+	d.files[f.Size()] = append(d.files[f.Size()], path)
+	d.stats.Add(StatsFiles, 1)
 	return err
 }
 
-func (self *Data) Execute() ([][]string, error) {
+func (d *Data) Execute() ([][]string, error) {
 	duplicates := [][]string{}
 
-	for size, _ := range self.files {
-		if len(self.files[size]) <= 1 {
+	for size, _ := range d.files {
+		if len(d.files[size]) <= 1 {
 			continue
 		}
 
 		crc32hashes := map[string][]string{}
-		for i, _ := range self.files[size] {
-			hash, err := CheckCrc32(self.files[size][i])
+		for i, _ := range d.files[size] {
+			hash, err := CheckCrc32(d.files[size][i])
 			if err != nil {
-				self.l.Error(err.Error())
-				self.err = err
+				d.l.Error(err.Error())
+				d.err = err
 				continue
 			}
 			if _, ok := crc32hashes[hash]; !ok {
 				crc32hashes[hash] = make([]string, 0)
 			}
-			crc32hashes[hash] = append(crc32hashes[hash], self.files[size][i])
-			self.stats.Add(StatsHashCrc32, 1)
+			crc32hashes[hash] = append(crc32hashes[hash], d.files[size][i])
+			d.stats.Add(StatsHashCrc32, 1)
 		}
-		delete(self.files, size)
+		delete(d.files, size)
 
 		sha256hashes := map[string][]string{}
 		for _, hashes := range crc32hashes {
@@ -150,8 +150,8 @@ func (self *Data) Execute() ([][]string, error) {
 			for _, v := range hashes {
 				hash, err := CheckSha256(v)
 				if err != nil {
-					self.l.Error(err.Error())
-					self.err = err
+					d.l.Error(err.Error())
+					d.err = err
 					continue
 				}
 
@@ -159,7 +159,7 @@ func (self *Data) Execute() ([][]string, error) {
 					sha256hashes[hash] = make([]string, 0)
 				}
 				sha256hashes[hash] = append(sha256hashes[hash], v)
-				self.stats.Add(StatsHashSha256, 1)
+				d.stats.Add(StatsHashSha256, 1)
 			}
 		}
 
@@ -173,7 +173,7 @@ func (self *Data) Execute() ([][]string, error) {
 					if i == k {
 						continue
 					} else if m, e := CheckBytes(hashes[i], hashes[k]); e != nil {
-						self.l.Error(e.Error())
+						d.l.Error(e.Error())
 					} else if m {
 						matches = append(matches, hashes[k])
 						hashes = append(hashes[:k], hashes[k+1:]...)
@@ -185,11 +185,11 @@ func (self *Data) Execute() ([][]string, error) {
 					hashes = append(hashes[:i], hashes[i+1:]...)
 					i--
 					duplicates = append(duplicates, matches)
-					self.stats.Add(StatsDuplicates, len(matches)-1)
+					d.stats.Add(StatsDuplicates, len(matches)-1)
 				}
 			}
 		}
 	}
 
-	return duplicates, self.err
+	return duplicates, d.err
 }

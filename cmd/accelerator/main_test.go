@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/cdelorme/level6"
+	"github.com/cdelorme/level"
 )
 
 func init() {
@@ -23,20 +23,20 @@ func TestConfigure(t *testing.T) {
 	// test no parameters
 	os.Args = []string{}
 	ex, _ = configure()
-	if l, e := ex.(*level6.Level6); !e || len(l.Input) == 0 {
+	if l, e := ex.(*level.Six); !e || len(l.Input) == 0 {
 		t.FailNow()
 	}
 
 	// test with valid parameters
 	os.Args = []string{"-t", "-m", "/dups", "-i", "/", "-e", "this,that"}
 	ex, _ = configure()
-	if l, e := ex.(*level6.Level6); !e || l.Input != "/" || l.Move != "/dups" || !l.Test || l.Excludes != "this,that" {
+	if l, e := ex.(*level.Six); !e || l.Input != "/" || l.Move != "/dups" || !l.Test || l.Excludes != "this,that" {
 		t.FailNow()
 	}
 }
 
 func TestMain(_ *testing.T) {
 	os.Args = []string{"-t", "-i", "%"}
-	os.Setenv("GO_PROFILE", "/tmp/level6.profile")
+	os.Setenv("GO_PROFILE", "/tmp/accelerator.profile")
 	main()
 }

@@ -1,4 +1,4 @@
-package level6
+package level
 
 import "os"
 
@@ -11,8 +11,4 @@ var steps []step
 
 func init() {
 	steps = append(steps, &Data{})
-	steps = append(steps, &Content{})
-	steps = append(steps, &Image{})
-	steps = append(steps, &Audio{})
-	steps = append(steps, &Video{})
 }

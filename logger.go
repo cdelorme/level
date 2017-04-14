@@ -1,4 +1,4 @@
-package level6
+package level
 
 type logger interface {
 	Error(string, ...interface{})
