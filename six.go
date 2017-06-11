@@ -231,7 +231,11 @@ func (s *Six) Walk(filePath string, f os.FileInfo, e error) error {
 // collected.  The last error encountered will be returned, otherwise nil.
 func (s *Six) LastOrder() error {
 	s.Input, _ = filepath.Abs(s.Input)
-	s.excludes = strings.Split(s.Excludes, ",")
+	for _, v := range strings.Split(s.Excludes, ",") {
+		if v != "" {
+			s.excludes = append(s.excludes, v)
+		}
+	}
 	s.FilesBySize = map[int64][]string{}
 	filepath.Walk(s.Input, s.Walk)
 	duplicates := s.Data(s.FilesBySize)
