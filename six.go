@@ -115,60 +115,25 @@ func (s *Six) Data(m map[int64][]string) [][]string {
 			continue
 		}
 
-		filesByCrc := map[string][]string{}
-		for i := range m[size] {
-			hash, err := GetBufferedCrc32(m[size][i])
-			s.Stats.Add("Total Hashes (crc32)", 1)
-			if err != nil {
-				s.err = err
-				s.L.Error("%s", err)
-				continue
-			}
-			if _, ok := filesByCrc[hash]; !ok {
-				filesByCrc[hash] = []string{}
-			}
-			filesByCrc[hash] = append(filesByCrc[hash], m[size][i])
-		}
+		set := make([]string, len(m[size]))
+		copy(set, m[size])
 
-		filesBySha := map[string][]string{}
-		for h := range filesByCrc {
-			if len(filesByCrc[h]) < 2 {
-				continue
-			}
-			for i := range filesByCrc[h] {
-				hash, err := GetBufferedSha256(filesByCrc[h][i])
-				s.Stats.Add("Total Hashes (sha256)", 1)
-				if err != nil {
-					s.err = err
-					s.L.Error("%s", err)
+		for j := 0; j < len(set)-1; j++ {
+			match := []string{}
+			for k := j + 1; k < len(set); k++ {
+				s.Stats.Add("Total Byte Comparisons", 1)
+				m, e := BufferedByteComparison(set[j], set[k])
+				if e != nil {
+					s.L.Error("%s", e)
 					continue
+				} else if m {
+					match = append(match, set[k])
+					set = append(set[:k], set[k+1:]...)
+					k--
 				}
-
-				if _, ok := filesBySha[hash]; !ok {
-					filesBySha[hash] = []string{}
-				}
-				filesBySha[hash] = append(filesBySha[hash], filesByCrc[h][i])
 			}
-		}
-
-		for _, set := range filesBySha {
-			for j := 0; j < len(set)-1; j++ {
-				match := []string{}
-				for k := j + 1; k < len(set); k++ {
-					s.Stats.Add("Total Byte Comparisons", 1)
-					m, e := BufferedByteComparison(set[j], set[k])
-					if e != nil {
-						s.L.Error("%s", e)
-						continue
-					} else if m {
-						match = append(match, set[k])
-						set = append(set[:k], set[k+1:]...)
-						k--
-					}
-				}
-				if len(match) > 0 {
-					duplicates = append(duplicates, append([]string{set[j]}, match...))
-				}
+			if len(match) > 0 {
+				duplicates = append(duplicates, append([]string{set[j]}, match...))
 			}
 		}
 	}
