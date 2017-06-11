@@ -169,6 +169,7 @@ func TestSixLastOrder(t *testing.T) {
 		t.Errorf("failed to identify valid file from walk...")
 		t.FailNow()
 	}
+
 	s.Test = false
 	if err := s.LastOrder(); err != nil {
 		t.Logf("failed to run LastOrder: %s\n", err)
