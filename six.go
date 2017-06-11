@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// A minimum logger interface with two levels.
+type Logger interface {
+	Error(string, ...interface{})
+	Debug(string, ...interface{})
+}
+
 // The primary structure that abstracts the logic surrounding deduplication.
 //
 // Several publicly exposed functions and properties are provided so that each
@@ -188,7 +194,7 @@ func (s *Six) Walk(filePath string, f os.FileInfo, e error) error {
 		s.L.Error(e.Error())
 		s.err = e
 	}
-	if f == nil || f.IsDir() || f.Mode().IsRegular() || f.Mode()&os.ModeSymlink != 0 || f.Size() == 0 {
+	if f == nil || f.IsDir() || !f.Mode().IsRegular() || f.Mode()&os.ModeSymlink != 0 || f.Size() == 0 {
 		s.L.Debug("discarding irregular file: %s", filePath)
 		return nil
 	}
@@ -208,8 +214,8 @@ func (s *Six) Walk(filePath string, f os.FileInfo, e error) error {
 
 // This is core function that coordinates all of the deduplication efforts.
 //
-// It cleans and converts the input path to an absolute path.  Next it
-// builds the excludes list, and initializes the files by size map.
+// It converts the input path to an absolute path.  Next it builds the excludes
+// list, and initializes the files by size map.
 //
 // It calls Walk() to iterate files in the provided path and build the map of
 // files by size.
@@ -224,10 +230,7 @@ func (s *Six) Walk(filePath string, f os.FileInfo, e error) error {
 // If any errors are encountered during the process, they will be logged and
 // collected.  The last error encountered will be returned, otherwise nil.
 func (s *Six) LastOrder() error {
-	if s.Input, s.err = filepath.Abs(filepath.Clean(s.Input)); s.err != nil {
-		s.L.Error(s.err.Error())
-		return s.err
-	}
+	s.Input, _ = filepath.Abs(s.Input)
 	s.excludes = strings.Split(s.Excludes, ",")
 	s.FilesBySize = map[int64][]string{}
 	filepath.Walk(s.Input, s.Walk)

@@ -14,20 +14,14 @@ import (
 	"os"
 )
 
-// A minimum logger interface with two levels.
-type Logger interface {
-	Error(string, ...interface{})
-	Debug(string, ...interface{})
-}
-
 // An efficient buffered computation for crc32 without memory problems.
 func GetBufferedCrc32(path string) (string, error) {
-	hasher := crc32.New(nil)
 	in, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer in.Close()
+	hasher := crc32.NewIEEE()
 	if _, err := io.Copy(hasher, in); err != nil {
 		return "", err
 	}
@@ -94,15 +88,4 @@ func BufferedByteComparison(one, two string) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-// A buffered line-by-line comparison that checks whether every line within one
-// exists within two as well.  Any failure to read results in an error, and any
-// mismatched line will result in false.
-func BufferedLineCheck(one, two string) (bool, error) {
-
-	// @todo: perform buffered comparison of each line
-	// on first mismatch return false
-
-	return false, nil
 }

@@ -56,3 +56,15 @@ func (s *Stats) String() string {
 	f += fmt.Sprintf("Total Execution Time: %s\n", time.Since(start))
 	return f
 }
+
+// Clears out all keys and values, and resets package global start time.
+//
+// As start time is a package global, it is possible for multiple instances
+// to run this in parallel and encounter a race condition.
+func (s *Stats) Reset() {
+	s.mu.Lock()
+	s.keys = []string{}
+	s.values = []int{}
+	start = time.Now()
+	s.mu.Unlock()
+}
