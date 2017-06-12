@@ -167,6 +167,7 @@ func (s *Six) Data(m map[int64][]string) [][]string {
 					}
 				}
 				if len(match) > 0 {
+					s.Stats.Add("Total Duplicate Files", len(match))
 					duplicates = append(duplicates, append([]string{set[j]}, match...))
 				}
 			}
