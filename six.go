@@ -95,18 +95,10 @@ func (s *Six) Filter(duplicates [][]string) []string {
 
 // Data accepts files grouped by size, which are sequentially compared.
 //
-// It moves from least to most expensive operations to reduce the cost of
-// identifying non-duplicates.
+// It iterates groups of duplicates and groups matches by running the
+// BufferedByteComparison against two files at a time.
 //
-// Starting with a buffered crc32 comparison, then a sha256 comparison, and
-// finally byte-by-byte comparison which begins with os.SameFile to check and
-// ignore hard-links.
-//
-// The final byte comparison is written under the assumption that a sha256
-// conflict is possible, and can produce multiple separate slices.
-//
-// Any time the number of files remaining in the slice is greater than two it
-// is appended to a slice of slices to be returned.
+// It returns groups of duplicates as a two dimensional array of strings.
 func (s *Six) Data(m map[int64][]string) [][]string {
 	delete(m, 0)
 	var duplicates [][]string
