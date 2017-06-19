@@ -121,7 +121,7 @@ func (s *Six) Data(m map[int64][]string) [][]string {
 		for j := 0; j < len(set)-1; j++ {
 			match := []string{}
 			for k := j + 1; k < len(set); k++ {
-				s.Stats.Add("Total Byte Comparisons", 1)
+				s.Stats.Add("Total File Comparisons", 1)
 				m, e := BufferedByteComparison(set[j], set[k])
 				if e != nil {
 					s.L.Error("%s", e)

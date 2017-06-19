@@ -43,7 +43,7 @@ func GetBufferedSha256(path string) (string, error) {
 }
 
 // A buffered byte-comparison function that accepts the paths to two files,
-// makes sure they are not hardlinked, then reads them byte by byte in small
+// makes sure they are not hardlinked, then reads them byte by byte in 4kb
 // chunks to compare without high memory consumption.
 func BufferedByteComparison(one, two string) (bool, error) {
 	if one == two {
@@ -72,18 +72,21 @@ func BufferedByteComparison(one, two string) (bool, error) {
 		return false, nil
 	}
 
-	bufferOne, bufferTwo := make([]byte, 32*1024), make([]byte, 32*1024)
+	bufferOne, bufferTwo := make([]byte, 4*1024), make([]byte, 4*1024)
 	readerOne, readerTwo := bufio.NewReader(inOne), bufio.NewReader(inTwo)
 	for {
-		_, errOne := readerOne.Read(bufferOne)
-		_, errTwo := readerTwo.Read(bufferTwo)
-		if errOne == io.EOF || io.EOF == errTwo {
-			if errOne == errTwo {
+		bytesOne, errOne := readerOne.Read(bufferOne)
+		bytesTwo, errTwo := readerTwo.Read(bufferTwo)
+		if bytesOne != bytesTwo || errOne != nil || errTwo != nil {
+			if errOne == io.EOF && errOne == errTwo {
 				break
+			} else if errOne != nil && errOne == io.EOF {
+				return false, errOne
+			} else if errTwo != nil && errTwo != io.EOF {
+				return false, errTwo
 			}
 			return false, nil
-		}
-		if bytes.Compare(bufferOne, bufferTwo) != 0 {
+		} else if bytes.Compare(bufferOne, bufferTwo) != 0 {
 			return false, nil
 		}
 	}
