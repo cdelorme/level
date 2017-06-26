@@ -2,69 +2,49 @@ package level
 
 import (
 	"fmt"
-	"sync"
 	"time"
 )
 
-var start = time.Now()
-
-// A mutex protected subsystem to safely collect statistics during runtime and
-// print a humanly readable summary.
+// A subsystem to collect metrics during execution.
 type Stats struct {
-	mu     sync.RWMutex
+	start  time.Time
 	keys   []string
 	values []int
 }
 
-// Add locks and checks for the key to update the value by what is supplied,
-// otherwise it adds a new key and sets the value to what is supplied.
-func (s *Stats) Add(k string, v int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for i, _ := range s.keys {
+// Creates or updates a stored metric and returns the final value.
+func (s *Stats) Add(k string, v int) int {
+	for i := range s.keys {
 		if s.keys[i] == k {
 			s.values[i] += v
-			return
+			return s.values[i]
 		}
 	}
 	s.keys = append(s.keys, k)
 	s.values = append(s.values, v)
+	return v
 }
 
-// Collects all fields in-order with the final execution time and
-// prints them into an indented json structure.
-func (s *Stats) Json() string {
-	f := "{\n"
-	s.mu.Lock()
-	for i := range s.keys {
-		f += fmt.Sprintf("\t\"%s\": %d,\n", s.keys[i], s.values[i])
-	}
-	s.mu.Unlock()
-	f += fmt.Sprintf("\t\"%s\": \"%s\"\n}", "Total Execution Time", time.Since(start))
-	return f
-}
-
-// Collect the final values in string format, including execution time,
-// and return them.
-func (s *Stats) String() string {
-	var f string
-	s.mu.RLock()
-	for i := range s.keys {
-		f += fmt.Sprintf("%s: %d\n", s.keys[i], s.values[i])
-	}
-	s.mu.RUnlock()
-	f += fmt.Sprintf("Total Execution Time: %s\n", time.Since(start))
-	return f
-}
-
-// Clears out all keys and values, and resets package global start time.
-//
-// As start time is a package global, it is possible for multiple instances
-// to run this in parallel and encounter a race condition.
+// Initializes metric storage and start time, clearing previous values.
 func (s *Stats) Reset() {
-	s.mu.Lock()
 	s.keys = []string{}
 	s.values = []int{}
-	start = time.Now()
-	s.mu.Unlock()
+	s.start = time.Now()
+}
+
+// Returns the duration since Reset was called.
+func (s *Stats) Duration() time.Duration {
+	return time.Since(s.start)
+}
+
+// Accepts a writer to print metrics and execution time.
+//
+// If no metrics exist, then no output will be written.
+func (s *Stats) Print(w Writer) {
+	for i := range s.keys {
+		fmt.Fprintf(w, "%s: %d\n", s.keys[i], s.values[i])
+	}
+	if len(s.keys) > 0 {
+		fmt.Fprintf(w, "%s\n", s.Duration())
+	}
 }

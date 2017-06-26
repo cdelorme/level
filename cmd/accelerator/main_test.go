@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io/ioutil"
 	"os"
 	"testing"
 )
@@ -8,9 +9,14 @@ import (
 func TestPlacebo(*testing.T) {}
 
 func TestMain(*testing.T) {
-	exit = func(int) {}
-	create = func(string) (*os.File, error) { return nil, nil }
+	print = func(...interface{}) (int, error) { return 0, nil }
+	stdout = ioutil.Discard
+
+	// test output version
 	os.Args = []string{"-ti", "%"}
-	os.Setenv("GO_PROFILE", "/tmp/accelerator.profile")
+	main()
+
+	// actually run delete
+	os.Args = []string{"-i", "%"}
 	main()
 }

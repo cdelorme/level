@@ -3,7 +3,7 @@
 
 A cross platform FOSS library to scan for duplicate files written in [go](https://golang.org/).
 
-**_Title inspired by the Japanese anime "Toaru Kagaku no Railgun"._**
+**_Title inspired by the Japanese anime [Toaru Kagaku no Railgun](https://myanimelist.net/anime/6213/Toaru_Kagaku_no_Railgun)._**
 
 **[Documentation](http://godoc.org/github.com/cdelorme/level)**
 
@@ -12,9 +12,13 @@ A cross platform FOSS library to scan for duplicate files written in [go](https:
 
 All processing is done synchronously because the bottleneck will always be the persistent storage.
 
-The primary function of the library is to scan a folder for files, discard files containing excluded segments, group them by size, discard hard-links by checking [`os.SameFile`](https://golang.org/pkg/os/#SameFile), and [compare them byte-by-byte](https://golang.org/pkg/bytes/#Compare).
+The primary operation (`LastOrder`) will scan a folder for files, discard all files with no size or which contain excluded segments, group the rest by size, then iterate the groups checking all but the first to ignore hard links using [`os.SameFile`](https://golang.org/pkg/os/#SameFile), read the remaining files two at a time in 4K chunks to [compare them byte-by-byte](https://golang.org/pkg/bytes/#Compare).
 
-_Since the scan assumes files will have the same byte-size, if a scan is run across multiple hard disks with varying block sizes then it may not accurately detect duplicates between the disks._
+If run in test mode no further actions will take place, and it is expected that the caller will print the metrics collected and the groups of duplicates so the user may act upon them.
+
+Otherwise, it will perform a weighted sort of each group favoring depth then frequency of directory discarding the first record with the lowest score so the rest may be deleted.
+
+_If the file system uses a larger block size than the 4K buffer used by the software it **may** negatively affect the performance of the software._
 
 
 ## usage
@@ -35,3 +39,8 @@ Installation process:
 Tests can be run via:
 
 	go test -v -cover -race
+
+
+## future
+
+- add intelligent buffer size to detect disk block sizes and use the lowest common denominator

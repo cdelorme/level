@@ -1,6 +1,8 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/cdelorme/glog"
@@ -8,14 +10,12 @@ import (
 	"github.com/cdelorme/level"
 )
 
-var exit = os.Exit
-var create = os.Create
+var print = fmt.Println
+var stdout level.Writer = os.Stdout
 
 func main() {
 	cwd, _ := os.Getwd()
-
-	l := &glog.Logger{}
-	six := &level.Six{Input: cwd, L: l}
+	six := &level.Six{Input: cwd, L: &glog.Logger{}}
 
 	config := &gonf.Config{}
 	config.Target(six)
@@ -27,9 +27,12 @@ func main() {
 	config.Example("-i ~/")
 	config.Load()
 
-	l.Info("%#v", six)
-
-	if six.LastOrder() != nil {
-		exit(1)
+	defer six.Stats(stdout)
+	six.LastOrder()
+	if six.Test {
+		d, _ := json.MarshalIndent(six.Filtered(), "", "\t")
+		print(string(d))
+	} else {
+		six.Delete()
 	}
 }
