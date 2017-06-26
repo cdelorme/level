@@ -26,9 +26,8 @@ type Logger interface {
 	Debug(string, ...interface{})
 }
 
-// A writer interface borrowed directly from io
-type Writer interface {
-	Write([]byte) (int, error)
+type Stats interface {
+	Add(string, int) int
 }
 
 // An abstraction to deduplication logic, with a minimal interface.
@@ -37,14 +36,13 @@ type Six struct {
 	Excludes string `json:"excludes,omitempty"`
 	Test     bool   `json:"test,omitempty"`
 	L        Logger `json:"-"`
+	S        Stats  `json:"-"`
 
 	running     bool
 	excludes    []string
 	filesBySize map[int64][]string `json:"-"`
 	duplicates  [][]string
 	filtered    []string
-
-	stats Stats
 }
 
 func (Six) bufferedByteComparison(one, two string) (bool, error) {
@@ -95,7 +93,7 @@ func (Six) bufferedByteComparison(one, two string) (bool, error) {
 }
 
 func (s *Six) walk(filePath string, f os.FileInfo, e error) error {
-	s.stats.Add(statsTotalFilesScanned, 1)
+	s.S.Add(statsTotalFilesScanned, 1)
 	if e != nil {
 		s.L.Error(e.Error())
 	}
@@ -109,7 +107,7 @@ func (s *Six) walk(filePath string, f os.FileInfo, e error) error {
 			return nil
 		}
 	}
-	s.stats.Add(statsTotalFilesCollected, 1)
+	s.S.Add(statsTotalFilesCollected, 1)
 	if _, ok := s.filesBySize[f.Size()]; !ok {
 		s.filesBySize[f.Size()] = make([]string, 0)
 	}
@@ -127,7 +125,7 @@ func (s *Six) data() {
 		for j := 0; j < len(set)-1; j++ {
 			group := []string{}
 			for k := j + 1; k < len(set); k++ {
-				s.stats.Add(statsTotalFileComparisons, 1)
+				s.S.Add(statsTotalFileComparisons, 1)
 				match, e := s.bufferedByteComparison(set[j], set[k])
 				if e != nil {
 					s.L.Error("%s", e)
@@ -140,7 +138,7 @@ func (s *Six) data() {
 				}
 			}
 			if len(group) > 0 {
-				s.stats.Add(statsTotalDuplicateFiles, len(group))
+				s.S.Add(statsTotalDuplicateFiles, len(group))
 				s.duplicates = append(s.duplicates, append([]string{set[j]}, group...))
 			}
 		}
@@ -167,11 +165,6 @@ func (s *Six) filter() {
 	}
 }
 
-// Accepts a Writer and uses it to print the metrics from stats.
-func (s *Six) Stats(w Writer) {
-	s.stats.Print(w)
-}
-
 // Returns the duplicates marked for deletion.
 func (s *Six) Filtered() []string {
 	return s.filtered
@@ -180,16 +173,16 @@ func (s *Six) Filtered() []string {
 // Iterate filtered files to delete each, and attempt to clear any empty
 // parent folders recursively.
 func (s *Six) Delete() {
-	s.stats.Add(statsFilesFlaggedForDeletion, len(s.filtered))
+	s.S.Add(statsFilesFlaggedForDeletion, len(s.filtered))
 	for i := range s.filtered {
 		d := s.filtered[i]
 		if err := os.Remove(d); err != nil {
 			s.L.Error("%s", err)
 			continue
 		}
-		s.stats.Add(statsFilesDeleted, 1)
+		s.S.Add(statsFilesDeleted, 1)
 		for os.Remove(filepath.Dir(d)) == nil {
-			s.stats.Add(statsFoldersDeletedDuringCleanup, 1)
+			s.S.Add(statsFoldersDeletedDuringCleanup, 1)
 			d = filepath.Dir(d)
 		}
 	}
@@ -223,7 +216,6 @@ func (s *Six) Delete() {
 // the group will be kept, and the rest are appended to a single dimensional
 // slice, which can be requested by Filtered and is used by Delete.
 func (s *Six) LastOrder() {
-	s.stats.Reset()
 	s.Input, _ = filepath.Abs(s.Input)
 	for _, v := range strings.Split(s.Excludes, ",") {
 		if v != "" {

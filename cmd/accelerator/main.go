@@ -8,14 +8,16 @@ import (
 	"github.com/cdelorme/glog"
 	"github.com/cdelorme/gonf"
 	"github.com/cdelorme/level"
+	"github.com/cdelorme/metrics"
 )
 
 var print = fmt.Println
-var stdout level.Writer = os.Stdout
+var stdout metrics.Writer = os.Stdout
 
 func main() {
 	cwd, _ := os.Getwd()
-	six := &level.Six{Input: cwd, L: &glog.Logger{}}
+	stats := metrics.NewStats()
+	six := &level.Six{Input: cwd, L: &glog.Logger{}, S: stats}
 
 	config := &gonf.Config{}
 	config.Target(six)
@@ -27,7 +29,7 @@ func main() {
 	config.Example("-i ~/")
 	config.Load()
 
-	defer six.Stats(stdout)
+	defer stats.Print(stdout)
 	six.LastOrder()
 	if six.Test {
 		d, _ := json.MarshalIndent(six.Filtered(), "", "\t")

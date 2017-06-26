@@ -15,20 +15,19 @@ func (l *mockLogger) Error(string, ...interface{}) {}
 func (l *mockLogger) Info(string, ...interface{})  {}
 func (l *mockLogger) Debug(string, ...interface{}) {}
 
-func TestSixStats(*testing.T) {
-	s := Six{L: &mockLogger{}}
-	s.Stats(ioutil.Discard)
-}
+type mockStats struct{}
+
+func (s *mockStats) Add(string, int) int { return 0 }
 
 func TestSixFiltered(t *testing.T) {
-	s := Six{L: &mockLogger{}}
+	s := Six{L: &mockLogger{}, S: &mockStats{}}
 	if n := len(s.Filtered()); n != 0 {
 		t.Fatalf("Failed to get 0 results from filtered, instead got %d", n)
 	}
 }
 
 func TestSixDelete(*testing.T) {
-	s := Six{L: &mockLogger{}}
+	s := Six{L: &mockLogger{}, S: &mockStats{}}
 	s.Delete()
 }
 
@@ -104,7 +103,7 @@ func TestSixLastOrder(t *testing.T) {
 		t.FailNow()
 	}
 
-	s := Six{L: &mockLogger{}, Input: dir, Excludes: ".ignore"}
+	s := Six{L: &mockLogger{}, S: &mockStats{}, Input: dir, Excludes: ".ignore"}
 	s.LastOrder()
 	s.Delete()
 }
