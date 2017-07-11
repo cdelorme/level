@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	// @note: testing horrible solution...
+	// "time"
 )
 
 const statsTotalFilesScanned = "Total Files Scanned"
@@ -18,6 +20,7 @@ const statsTotalDuplicateFiles = "Total Duplicate Files"
 const statsFilesFlaggedForDeletion = "Files Flagged for Deletion"
 const statsFilesDeleted = "Files Deleted"
 const statsFoldersDeletedDuringCleanup = "Folders Deleted During Cleanup"
+const maxFileDescriptors = 512 // based on C standard library
 
 // A minimum logger interface with three severities.
 type Logger interface {
@@ -26,11 +29,12 @@ type Logger interface {
 	Debug(string, ...interface{})
 }
 
+// A minimum stats interface for adding to collected metrics.
 type Stats interface {
 	Add(string, int) int
 }
 
-// An abstraction to deduplication logic, with a minimal interface.
+// An abstraction for deduplication logic, with a minimal interface.
 type Six struct {
 	Input    string `json:"input,omitempty"`
 	Excludes string `json:"excludes,omitempty"`
@@ -45,7 +49,7 @@ type Six struct {
 	filtered    []string
 }
 
-func (Six) bufferedByteComparison(one, two string) (bool, error) {
+func (Six) comparison(one, two string) (bool, error) {
 	if one == two {
 		return false, nil
 	}
@@ -92,27 +96,60 @@ func (Six) bufferedByteComparison(one, two string) (bool, error) {
 	return true, nil
 }
 
-func (s *Six) walk(filePath string, f os.FileInfo, e error) error {
-	s.S.Add(statsTotalFilesScanned, 1)
-	if e != nil {
-		s.L.Error(e.Error())
-	}
-	if f == nil || f.IsDir() || !f.Mode().IsRegular() || f.Mode()&os.ModeSymlink != 0 || f.Size() == 0 {
-		s.L.Debug("discarding irregular file: %s", filePath)
-		return nil
-	}
-	for i, _ := range s.excludes {
-		if strings.Contains(filePath, s.excludes[i]) {
-			s.L.Debug("discarding excluded file: %s", filePath)
-			return nil
+func (s *Six) recursion(files []*fileContainer) {
+	// one option, slower to release
+	// for i := range files {
+	// 	defer files[i].f.Close()
+	// }
+	s.S.Add(statsTotalFileComparisons, len(files)-1)
+	var deeper []*fileContainer
+	var fc *fileContainer
+	for {
+		bytesOne, errOne := files[0].r.Read(files[0].b)
+		if errOne != nil && errOne != io.EOF {
+			s.L.Error("%s", errOne)
+			break
+		}
+		for i := 1; i < len(files); i++ {
+			bytesTwo, errTwo := files[i].r.Read(files[i].b)
+			if errTwo != errOne || bytesTwo != bytesOne || bytes.Compare(files[0].b, files[i].b) != 0 {
+				fc, files = files[i], append(files[:i], files[i+1:]...)
+				i--
+				if errTwo != nil && errTwo != io.EOF {
+					s.L.Error("%s", errTwo)
+					continue
+				}
+				fc.f.Seek(0, 0)
+				deeper = append(deeper, fc)
+			}
+		}
+		if errOne == io.EOF {
+			break
 		}
 	}
-	s.S.Add(statsTotalFilesCollected, 1)
-	if _, ok := s.filesBySize[f.Size()]; !ok {
-		s.filesBySize[f.Size()] = make([]string, 0)
+	if len(files) > 1 {
+		var group []string
+		for i := range files {
+			group = append(group, files[i].f.Name())
+		}
+		s.duplicates = append(s.duplicates, group)
+		s.S.Add(statsTotalDuplicateFiles, len(group))
 	}
-	s.filesBySize[f.Size()] = append(s.filesBySize[f.Size()], filePath)
-	return nil
+
+	// // potentially faster and more direct, gives system time while next subgroup is compared
+	// for i := range files {
+	// 	files[i].f.Close()
+	// }
+
+	if len(deeper) > 1 {
+		s.recursion(deeper)
+	}
+
+	// // potentially faster and more direct, gives system time while next subgroup is compared
+	// // however it may also be redundant as depth continues to add to the process
+	// for i := range deeper {
+	// 	deeper[i].f.Close()
+	// }
 }
 
 func (s *Six) data() {
@@ -120,13 +157,42 @@ func (s *Six) data() {
 		if len(s.filesBySize[size]) < 2 {
 			continue
 		}
+
 		set := make([]string, len(s.filesBySize[size]))
 		copy(set, s.filesBySize[size])
+
+		if len(set) <= maxFileDescriptors {
+			var files []*fileContainer
+			for i := range set {
+				fc, e := newFileContainer(set[i])
+				if e != nil {
+					s.L.Error("%s", e)
+					continue
+				}
+				files = append(files, fc)
+			}
+			if len(files) < 2 {
+				continue
+			}
+			s.recursion(files)
+
+			// @note: terrible solution but one which helped avoid the dreaded
+			// too many open files on debian linux, at the expense of a sleep
+			// after every group is compared, without any real semblance of
+			// safety due to the expectation of a synchronous Close on files...
+			for i := range files {
+				files[i].f.Close()
+			}
+			// time.Sleep(time.Millisecond * 100)
+
+			continue
+		}
+
 		for j := 0; j < len(set)-1; j++ {
 			group := []string{}
 			for k := j + 1; k < len(set); k++ {
 				s.S.Add(statsTotalFileComparisons, 1)
-				match, e := s.bufferedByteComparison(set[j], set[k])
+				match, e := s.comparison(set[j], set[k])
 				if e != nil {
 					s.L.Error("%s", e)
 					continue
@@ -163,6 +229,29 @@ func (s *Six) filter() {
 		})
 		s.filtered = append(s.filtered, s.duplicates[i][1:]...)
 	}
+}
+
+func (s *Six) walk(filePath string, f os.FileInfo, e error) error {
+	s.S.Add(statsTotalFilesScanned, 1)
+	if e != nil {
+		s.L.Error(e.Error())
+	}
+	if f == nil || f.IsDir() || !f.Mode().IsRegular() || f.Mode()&os.ModeSymlink != 0 || f.Size() == 0 {
+		s.L.Debug("discarding irregular file: %s", filePath)
+		return nil
+	}
+	for i, _ := range s.excludes {
+		if strings.Contains(filePath, s.excludes[i]) {
+			s.L.Debug("discarding excluded file: %s", filePath)
+			return nil
+		}
+	}
+	s.S.Add(statsTotalFilesCollected, 1)
+	if _, ok := s.filesBySize[f.Size()]; !ok {
+		s.filesBySize[f.Size()] = make([]string, 0)
+	}
+	s.filesBySize[f.Size()] = append(s.filesBySize[f.Size()], filePath)
+	return nil
 }
 
 // Returns the duplicates marked for deletion.

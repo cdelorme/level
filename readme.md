@@ -44,3 +44,17 @@ Tests can be run via:
 ## future
 
 - add intelligent buffer size to detect disk block sizes and use the lowest common denominator
+
+
+## optimizations
+
+An attempt to open an entire group instead of one file at a time, when operating with a safe number (<512) of files, so we can avoid redundantly opening and reading the leading file for every looped comparison.
+
+Concerns and bugs surrounding this model include:
+
+- running out of file descriptors due to latency between `os.File.Close` and the file descriptor actually being freed.
+- traditional spindle drives means the needle may need to move more to read each file, and the amount of files may eliminate benefits from the cache.
+
+The current implementation, in spite of closing files after the group comparison, seems to run out of file descriptors on linux due to latency between `os.File.Close` and the actual file descriptor being freed.  _How this problem is not encountered when performing comparisons of two files at a time is uncertain..._
+
+Adding an arbitrary sleep was able to resolve this problem, at the expense of a sizable increase in execution time.
