@@ -7,8 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 )
 
 const statsTotalFilesScanned = "Total Files Scanned"
@@ -18,6 +20,8 @@ const statsTotalDuplicateFiles = "Total Duplicate Files"
 const statsFilesFlaggedForDeletion = "Files Flagged for Deletion"
 const statsFilesDeleted = "Files Deleted"
 const statsFoldersDeletedDuringCleanup = "Folders Deleted During Cleanup"
+
+var concurrent = runtime.NumCPU()
 
 // A minimum logger interface with three severities.
 type Logger interface {
@@ -116,33 +120,58 @@ func (s *Six) walk(filePath string, f os.FileInfo, e error) error {
 }
 
 func (s *Six) data() {
+	jobs := make(chan []string)
+	results := make(chan []string)
+	var wg sync.WaitGroup
+	wg.Add(concurrent)
+	// @todo: add a waitgroup so we don't close before duplicates are done counting?
+
+	// start fixed number of goroutines
+	for i := 0; i <= concurrent; i++ {
+		go func(sets <-chan []string, results chan<- []string, wg sync.WaitGroup) {
+			for set := range sets {
+				for j := 0; j < len(set)-1; j++ {
+					group := []string{}
+					for k := j + 1; k < len(set); k++ {
+						s.S.Add(statsTotalFileComparisons, 1)
+						match, e := s.bufferedByteComparison(set[j], set[k])
+						if e != nil {
+							s.L.Error("%s", e)
+							continue
+						}
+						if match {
+							group = append(group, set[k])
+							set = append(set[:k], set[k+1:]...)
+							k--
+						}
+					}
+					if len(group) > 0 {
+						results <- append([]string{set[j]}, group...)
+					}
+				}
+			}
+			wg.Done()
+		}(jobs, results, wg)
+	}
+
+	go func(s *Six, results <-chan []string) {
+		for group := range results {
+			s.S.Add(statsTotalDuplicateFiles, len(group))
+			s.duplicates = append(s.duplicates, group)
+		}
+	}(s, results)
+
 	for size := range s.filesBySize {
 		if len(s.filesBySize[size]) < 2 {
 			continue
 		}
 		set := make([]string, len(s.filesBySize[size]))
 		copy(set, s.filesBySize[size])
-		for j := 0; j < len(set)-1; j++ {
-			group := []string{}
-			for k := j + 1; k < len(set); k++ {
-				s.S.Add(statsTotalFileComparisons, 1)
-				match, e := s.bufferedByteComparison(set[j], set[k])
-				if e != nil {
-					s.L.Error("%s", e)
-					continue
-				}
-				if match {
-					group = append(group, set[k])
-					set = append(set[:k], set[k+1:]...)
-					k--
-				}
-			}
-			if len(group) > 0 {
-				s.S.Add(statsTotalDuplicateFiles, len(group))
-				s.duplicates = append(s.duplicates, append([]string{set[j]}, group...))
-			}
-		}
+		jobs <- set
 	}
+	close(jobs)
+	wg.Wait()
+	close(results)
 }
 
 func (s *Six) filter() {

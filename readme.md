@@ -44,3 +44,10 @@ Tests can be run via:
 ## future
 
 - add intelligent buffer size to detect disk block sizes and use the lowest common denominator
+
+
+## concurrent
+
+The addition of concurrency may improve performance so long as there is idle time spent processing data exceeding time spent reading files.
+
+There are still race conditions with the implementation.
